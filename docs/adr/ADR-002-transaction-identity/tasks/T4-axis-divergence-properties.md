@@ -45,7 +45,7 @@ expectation. Only generated divergence can.
 
 ```bash
 set -o pipefail
-go test ./internal/core/temporal/... -run 'TestGenerator|TestVisibleAgreesWithOracle|TestNoGeneratedCase' -count=1 2>&1 | tee /tmp/adr002-t4.out \
+go test ./internal/core/temporal/... -run 'TestGenerator|TestVisibleAgreesWithOracle|TestNoGeneratedCase|TestCounterexample' -count=1 2>&1 | tee /tmp/adr002-t4.out \
   && ! grep -qE "no tests to run|matched no packages|^FAIL|^--- FAIL" /tmp/adr002-t4.out \
   && go test ./internal/core/temporal/... ./internal/core/tx/... ./internal/core/hlc/... -count=1
 ```
@@ -70,6 +70,13 @@ go test ./internal/core/temporal/... -run 'TestGenerator|TestVisibleAgreesWithOr
 
 ## Mutation Log
 
+- 2026-09-04 · be34cbb* · mutant killed · exit 1 · `internal/core/temporal/divergence_test.go` · taming the generator so business time always equals commit time makes this suite exactly the blind fixture set it replaces; TestNoGeneratedCaseHasAgreeingAxes is the guard on the guard and must go red · acceptance-sha256:4cfc6c236e33459475aa049789f37a489f9ffbf1c9ec459a3fb37d140302bf29 · covers:the generator actually producing divergent cases
+- 2026-09-04 · be34cbb* · mutant survived · exit 0 · `internal/core/temporal/oracle_test.go` · breaking the oracle at the half-open boundary must make it disagree with Visible, which proves the oracle is genuinely consulted rather than decorative; TestVisibleAgreesWithOracle must go red · acceptance-sha256:4cfc6c236e33459475aa049789f37a489f9ffbf1c9ec459a3fb37d140302bf29 · covers:the oracle being independent of the implementation
+  ```
+  the fence passed with the mechanism broken; it may not materialize, compile, load, or assert on the changed path
+  ```
+- 2026-09-04 · be34cbb* · mutant killed · exit 1 · `internal/core/temporal/oracle_test.go` · second attempt: the first SURVIVED because the generator drew query instants at random over a wide range and essentially never landed on an interval boundary, so nothing could observe a half-open/closed confusion. One in three business instants is now drawn exactly on validFrom or validTo · acceptance-sha256:4cfc6c236e33459475aa049789f37a489f9ffbf1c9ec459a3fb37d140302bf29 · covers:the oracle being independent of the implementation
+
 ## Invariants
 
 - The oracle is written from ADR-002's record, never from `Visible`'s implementation. A test that calls the code it is testing proves the code equals itself.
@@ -79,6 +86,7 @@ go test ./internal/core/temporal/... -run 'TestGenerator|TestVisibleAgreesWithOr
 ## Risks
 
 - A property suite can be green because the generator is weak, which looks exactly like a property suite that is green because the code is right. `TestNoGeneratedCaseHasAgreeingAxes` is the answer, and it is why that assertion carries `[proof: mutation]` — the mutant to run is one that tames the generator, and the suite must go red.
+- ★ A GENERATOR CAN BE WIDE AND STILL UNFALSIFIABLE ON A PARTICULAR AXIS, which a green suite cannot tell you. Measured 2026-09-04: a mutation breaking the oracle's half-open boundary SURVIVED five thousand generated cases, because query instants drawn uniformly over a wide range essentially never land exactly on `validFrom` or `validTo`. The corpus was large, divergent, and structurally unable to observe that defect. One in three business instants is now drawn exactly on a boundary, and the mutant dies. The general question to ask of any fixture before trusting a kill or a survival: could this corpus PRODUCE the failure at all?
 - The oracle could be written by copying `Visible`, which would make the whole task decorative. This is not mechanically checkable; it is a review obligation, stated here so a reviewer knows to look.
 
 ## Stop Condition
@@ -94,3 +102,7 @@ finding about ADR-002 rather than about this task.
 - Fuzzing the encoding — that belongs with T2, which owns the encoding.
 
 ## Verification Log
+- 2026-09-04 · be34cbb* · exit 0 · `set -o pipefail …` · acceptance-sha256:4cfc6c236e33459475aa049789f37a489f9ffbf1c9ec459a3fb37d140302bf29 · ms:1198
+- 2026-09-04 · be34cbb* · exit 0 · `set -o pipefail …` · acceptance-sha256:4cfc6c236e33459475aa049789f37a489f9ffbf1c9ec459a3fb37d140302bf29 · ms:1051
+- 2026-09-04 · be34cbb* · exit 0 · `set -o pipefail …` · acceptance-sha256:4cfc6c236e33459475aa049789f37a489f9ffbf1c9ec459a3fb37d140302bf29 · ms:1162
+- 2026-09-04 · be34cbb* · exit 0 · `set -o pipefail …` · acceptance-sha256:4cfc6c236e33459475aa049789f37a489f9ffbf1c9ec459a3fb37d140302bf29 · ms:1362

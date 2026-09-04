@@ -28,7 +28,7 @@ strictly linear: each task consumes the one before it.
 | T1 | The hybrid logical clock | done | — | `go test ./internal/core/hlc/... -race` |
 | T2 | The transaction identifier and its total order | done | — | `go test ./internal/core/tx/... -race` |
 | T3 | Two-axis visibility and the qualifier defaults | done | — | `go test ./internal/core/temporal/...` |
-| T4 | A property suite that forces the two time axes apart | pending | — | `go test ./internal/core/temporal/... -run 'TestGenerator\|TestVisibleAgreesWithOracle'` |
+| T4 | A property suite that forces the two time axes apart | done | — | `go test ./internal/core/temporal/... -run 'TestGenerator\|TestVisibleAgreesWithOracle\|TestNoGeneratedCase\|TestCounterexample'` |
 
 Status: `pending` | `partial` | `blocked` | `done`.
 
