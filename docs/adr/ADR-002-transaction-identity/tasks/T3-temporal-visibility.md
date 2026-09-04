@@ -8,7 +8,7 @@
 **Consumes:** `tx.TxID` (T2)
 **Data dependency:** hermetic
 **Proof map:** v1
-**Rests-on:** `the single comparison site`, `the lone-instant binding rule`, `the open transaction-time default`
+**Rests-on:** `the lone-instant binding rule`, `the independence of the two axes`, `the half-open interval`
 
 ## Goal
 
@@ -32,7 +32,7 @@ makes that mistake reviewable in one place instead of at every call site.
 
 ## Ordered Steps
 
-1. [S1] Write the failing tests first (TDD red): `TestLoneInstantBindsValidTimeOnly`, `TestBackdatedWriteIsVisibleAtItsValidTime`, `TestTransactionTimeDefaultsToOpen`, `TestDefaultsTableIsExhaustive`, `TestVisibleIsTheOnlyComparisonSite`. Run the Acceptance fence and confirm it is red. [proof: acceptance]
+1. [S1] Write the failing tests first (TDD red): `TestLoneInstantBindsValidTimeOnly`, `TestBackdatedWriteIsVisibleAtItsValidTime`, `TestTransactionTimeDefaultsToOpen`, `TestDefaultsTableIsExhaustive`, `TestVisibleRejectsOnEitherAxisIndependently`, `TestIntervalIsHalfOpen`, `TestVisibleIsTheOnlyComparisonSite`. Run the Acceptance fence and confirm it is red. ⚠Check each name is SELECTED by the fence's `-run` filter: a falsifier beside the command rather than inside it proves nothing, and this cost a spuriously surviving mutant. [proof: acceptance]
 2. [S2] Define `Interval{From, To int64}` as a half-open business-time window — `[From, To)` — so that adjacent intervals neither overlap nor leave a gap. Closed intervals are the classic off-by-one here and are rejected deliberately.
 3. [S3] Define `Query{AsOf *tx.TxID; ValidAt *int64}` with both qualifiers as pointers, so "not supplied" is representable and cannot be confused with a zero value.
 4. [S4] Implement `ResolveQualifiers` as ADR-002 rule 6's table, written as a literal table in code so it can be read against the record rather than reconstructed from branches: nothing → (latest, now); `AS OF t` → (latest, t); `AS OF t TRANSACTION u` → (u, t); `TRANSACTION u` → (u, now).
@@ -43,7 +43,7 @@ makes that mistake reviewable in one place instead of at every call site.
 
 ```bash
 set -o pipefail
-go test ./internal/core/temporal/... -run 'TestLoneInstant|TestBackdated|TestTransactionTime|TestDefaults|TestVisible' -count=1 2>&1 | tee /tmp/adr002-t3.out \
+go test ./internal/core/temporal/... -run 'TestLoneInstant|TestBackdated|TestTransactionTime|TestDefaults|TestInterval|TestVisible' -count=1 2>&1 | tee /tmp/adr002-t3.out \
   && ! grep -qE "no tests to run|matched no packages|^FAIL|^--- FAIL" /tmp/adr002-t3.out \
   && go test ./internal/core/hlc/... ./internal/core/tx/... -count=1
 ```
@@ -71,6 +71,16 @@ go test ./internal/core/temporal/... -run 'TestLoneInstant|TestBackdated|TestTra
 
 ## Mutation Log
 
+- 2026-09-04 · a3ba183* · mutant killed · exit 1 · `internal/core/temporal/qualifiers.go` · ignoring a supplied instant and using the current one silently answers a different question than the caller asked; TestLoneInstantBindsValidTimeOnly must go red · acceptance-sha256:5847e3378b3da24dbb41f13dfd733770dd0f0a0bffd345b726d0009ec0fa3ce3 · covers:the lone-instant binding rule
+- 2026-09-04 · a3ba183* · mutant killed · exit 1 · `internal/core/temporal/temporal.go` · dropping the transaction condition makes visibility depend on business time alone, so a datom recorded after the cutoff is wrongly included; TestVisibleRejectsOnEitherAxisIndependently must go red · acceptance-sha256:5847e3378b3da24dbb41f13dfd733770dd0f0a0bffd345b726d0009ec0fa3ce3 · covers:the independence of the two axes
+- 2026-09-04 · a3ba183* · mutant survived · exit 0 · `internal/core/temporal/temporal.go` · a closed interval makes two adjacent versions both visible at the boundary instant, which is the classic off-by-one in a versioned store; TestIntervalIsHalfOpen must go red · acceptance-sha256:5847e3378b3da24dbb41f13dfd733770dd0f0a0bffd345b726d0009ec0fa3ce3 · covers:the half-open interval
+  ```
+  the fence passed with the mechanism broken; it may not materialize, compile, load, or assert on the changed path
+  ```
+- 2026-09-04 · a3ba183* · mutant killed · exit 1 · `internal/core/temporal/qualifiers.go` · re-bound to the widened fence: ignoring a supplied instant silently answers a different question than the caller asked · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · covers:the lone-instant binding rule
+- 2026-09-04 · a3ba183* · mutant killed · exit 1 · `internal/core/temporal/temporal.go` · re-bound to the widened fence: dropping the transaction condition makes visibility depend on business time alone · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · covers:the independence of the two axes
+- 2026-09-04 · a3ba183* · mutant killed · exit 1 · `internal/core/temporal/temporal.go` · second attempt. The first SURVIVED only because TestIntervalIsHalfOpen sat outside the fence filter, so the falsifier was never run. A closed interval makes two adjacent versions both visible at the boundary instant · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · covers:the half-open interval
+
 ## Invariants
 
 - `Visible` is the only place in the system where a business-time bound and a transaction-time bound are both compared. `TestVisibleIsTheOnlyComparisonSite` is what keeps that true as the codebase grows.
@@ -95,3 +105,11 @@ exactly two qualifiers, and a third makes the table incomplete rather than wrong
 - Deciding what "latest" resolves to on a replica that is behind (deferred: `docs/adr/BACKLOG.md` §5)
 
 ## Verification Log
+- 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:5847e3378b3da24dbb41f13dfd733770dd0f0a0bffd345b726d0009ec0fa3ce3 · ms:1154
+- 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:5847e3378b3da24dbb41f13dfd733770dd0f0a0bffd345b726d0009ec0fa3ce3 · ms:1353
+- 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:5847e3378b3da24dbb41f13dfd733770dd0f0a0bffd345b726d0009ec0fa3ce3 · ms:1226
+- 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:5847e3378b3da24dbb41f13dfd733770dd0f0a0bffd345b726d0009ec0fa3ce3 · ms:1291
+- 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1202
+- 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1210
+- 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1197
+- 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1188
