@@ -56,6 +56,33 @@ func TestLoneInstantBindsValidTimeOnly(t *testing.T) {
 	}
 }
 
+// TestAtBindsBothAxesAndResolveDoesNot pins the difference between the two ways a
+// Query is built, because using the wrong one is silent.
+//
+// [At] is for a caller that already HOLDS both values — a storage engine with a
+// snapshot. [ResolveQualifiers] is for a caller expressing what a user wrote, and
+// a lone instant there leaves the transaction axis OPEN. Swapping them binds one
+// instant to both axes, which is the defect this package exists to prevent, and
+// nothing about the resulting query looks wrong.
+func TestAtBindsBothAxesAndResolveDoesNot(t *testing.T) {
+	id := tx.TxID{HLC: hlc.Timestamp{Wall: 4242}, Leaf: leaf(t, "planet-3"), Seq: 3}
+
+	bound := At(id, past)
+	if bound.AsOf == nil || *bound.AsOf != id {
+		t.Errorf("At left the transaction axis at %v, want the identifier it was given", bound.AsOf)
+	}
+	if bound.ValidAt == nil || *bound.ValidAt != past {
+		t.Errorf("At left the business axis at %v, want %d", bound.ValidAt, past)
+	}
+
+	// The same instant through the other constructor must NOT bind the system
+	// axis — if these two ever agree, one of them has stopped doing its job.
+	written := ResolveQualifiers(Query{ValidAt: ptr(past)}, now)
+	if written.AsOf != nil {
+		t.Fatalf("ResolveQualifiers bound the transaction axis to %v from a lone instant", written.AsOf)
+	}
+}
+
 // TestBackdatedWriteIsVisibleAtItsValidTime is the same rule stated as the
 // behaviour an operator sees: a fact recorded today but true since last year
 // must be returned by a query about last year.

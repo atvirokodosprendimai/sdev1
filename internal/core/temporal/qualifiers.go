@@ -38,6 +38,22 @@ type Query struct {
 // in this package's documentation, and it is the behaviour a reasonable
 // implementer writes by default — which is why it is a stated rule rather than
 // a default nobody wrote down.
+// At builds a fully bound query: a transaction identifier on the system axis and
+// an instant on the business axis, both given.
+//
+// ★ It exists so that ASSEMBLING the two axes happens here rather than at every
+// caller. A storage engine holding both values still has to put them in a Query,
+// and doing that in its own file is how a second site that names both axes
+// appears — which is precisely what this package concentrates in one place, and
+// what [TestVisibleIsTheOnlyComparisonSite] refuses.
+//
+// ⚠ Nothing is defaulted. This is for a caller that already HAS both values, such
+// as one holding a snapshot; a caller expressing what a user wrote wants
+// [ResolveQualifiers], which applies ADR-002 rule 6's table.
+func At(id tx.TxID, instant int64) Query {
+	return Query{AsOf: &id, ValidAt: &instant}
+}
+
 func ResolveQualifiers(q Query, now int64) Query {
 	resolved := Query{AsOf: q.AsOf}
 	if q.ValidAt != nil {
