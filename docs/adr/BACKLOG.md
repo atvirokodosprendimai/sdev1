@@ -260,6 +260,41 @@ many blocks", paying compression ratio for the other three. It is written down
 rather than assumed because the format permits either and the cost of learning
 it late is a rewrite of every stored byte.
 
+### §14 — Nothing re-codes existing stripes when the configured scheme changes
+
+**Source:** ADR-006 (`docs/adr/ADR-006-erasure-coding.md`), Out of Scope; and its
+T2, which defers the same thing.
+
+ADR-006 makes the coding scheme a property of each stripe, so changing the
+operator's configured scheme is safe: old stripes keep decoding under the scheme
+they carry. That is a correctness guarantee and it is deliberately not a
+migration.
+
+What it leaves open is that a cluster configured from `RS(8,2)` to `RS(10,4)`
+then holds two populations indefinitely, with different tolerances and different
+storage costs, and nothing reports the split or converges it. Three questions
+have no answer yet.
+
+**Whether to converge at all.** Re-coding a stripe means reading `k` fragments,
+re-encoding and writing `k+m` — the most expensive operation this system can
+perform, over data that is by definition cold. Leaving old stripes alone may
+simply be correct, in which case the answer is a report rather than a migration.
+
+**How a mixed population is observed.** An operator who cannot see how much data
+sits at the old tolerance cannot decide the first question. This wants a count
+per scheme, and it belongs with whatever ADR-012's console reports.
+
+**What happens when a scheme is REDUCED.** Moving to fewer parity fragments
+lowers the tolerance of new writes while old stripes stay stronger, which is
+harmless. Moving the other way is the case that tempts a migration, and it
+competes for exactly the bandwidth repair needs — so it cannot be designed
+independently of §3.
+
+⚠ Whatever closes this must not be allowed to reach back and rewrite the scheme
+recorded in an existing stripe's header in place. The header is what makes that
+stripe readable; a converter that edits it before the fragments beneath it have
+actually changed produces a stripe that describes something that does not exist.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
