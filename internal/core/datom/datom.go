@@ -83,6 +83,20 @@ var (
 	ErrTrailingBytes = errors.New("datom: bytes after the end of the run")
 )
 
+// SizeOf returns what one datom costs on the wire, without encoding it.
+//
+// ★ It exists so a size bound counts the bytes that will ACTUALLY be written.
+// Counting only values and ignoring the fixed part would under-report a run of
+// many small facts by an order of magnitude — and many small facts is what a busy
+// writer produces.
+//
+// ⚠ It excludes the run header, which is paid once per run rather than per datom.
+// A caller summing this over n datoms and comparing against a byte budget is
+// off by [HeaderSize], which is six bytes and does not move.
+func SizeOf(d ports.Datom) int {
+	return FixedSize + len(d.Entity) + len(d.Attribute) + len(d.Value)
+}
+
 // Encode writes a run of datoms.
 //
 // ⚠ EVERY field of every datom is written, whatever its value. Nothing is omitted
