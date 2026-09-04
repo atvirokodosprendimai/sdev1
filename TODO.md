@@ -96,7 +96,7 @@ What genuinely remains under this number, each blocked on something real:
 | **§25** | Serve the agent surface over MCP, rate-limit it, and report what it did. Also needs the SDK dependency, pinned exactly |
 | **§26** | Mount the filesystem projection. Also needs a FUSE library — a portability decision, not a dependency bump — and enumeration from §20 |
 | **§8** | Test a real domain against the one-entity transaction boundary. Until something real is modelled against it, the boundary is reasoned rather than validated |
-| **§27** | Persist the search index and confirm candidates against the datoms. ⚠The confirmation is the rule that decays quietest, because skipping it makes every search faster and the damage shows only on data that changed |
+| **§27** | ✅ mostly done — the index is a rebuildable, idempotent projection of the log and `search.Confirm` drops candidates the datoms no longer support. ⚠What remains: the session's `SEARCH` does not call `Confirm` yet (it needs a reader and a snapshot on the search path — the same work as §20), and the index itself is not written to a disk (§15) |
 | **§28** | ✅ done — `sdev1-ql --dir ./leaf` keeps a leaf across runs, and a session rehydrates from it. What remains under this number is a write tool on the agent surface, and several attributes in one `ASSERT` |
 
 | **§29** | ✅ done — `ASSERT a orbits = ->b` writes a link and `TRAVERSE a DEPTH 2 AS OF 150` walks one. What remains under this number is inbound edges: nothing answers "what points AT this" without a scan |

@@ -141,22 +141,16 @@ func project(carried map[string]ports.Datom, attributes []string) map[string]por
 // is an optimisation — it avoids shipping datoms nobody wants — and this one is
 // the meaning.
 func latestVisible(datoms []ports.Datom, resolved temporal.Query) map[string]ports.Datom {
-	latest := make(map[string]ports.Datom, len(datoms))
+	visible := make([]ports.Datom, 0, len(datoms))
 	for _, d := range datoms {
-		if !temporal.Visible(d.Valid.From, d.Valid.To, d.TxID, resolved) {
-			continue
-		}
-		if prior, seen := latest[d.Attribute]; seen && d.TxID.Compare(prior.TxID) <= 0 {
-			continue
-		}
-		latest[d.Attribute] = d
-	}
-	for name, d := range latest {
-		if !d.Assert {
-			delete(latest, name)
+		if temporal.Visible(d.Valid.From, d.Valid.To, d.TxID, resolved) {
+			visible = append(visible, d)
 		}
 	}
-	return latest
+	// ★ The reduction itself is [ports.Carried], shared with the store and with
+	// search's confirmation. Three copies of "latest per attribute, retractions
+	// suppressed" is three chances to get the second half wrong.
+	return ports.Carried(visible)
 }
 
 // satisfies reports whether an entity's carried attributes satisfy the predicate.

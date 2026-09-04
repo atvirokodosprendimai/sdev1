@@ -38,6 +38,36 @@ type Datom struct {
 	IsReference bool
 }
 
+// Carried reduces an entity's VISIBLE datoms to what it currently carries: the
+// latest datom per attribute, with retracted attributes absent entirely.
+//
+// ⚠ It lives here because three places need it — the evaluator projecting a
+// SELECT, a store answering what an entity's shape is, and search confirming a
+// candidate — and a fourth will. Each copy has to get the same two things right:
+// LATEST by transaction, and a retraction SUPPRESSING its attribute rather than
+// being reported as a value. A copy that skipped the second returns a fact that
+// was withdrawn, which is indistinguishable from one that was not.
+//
+// ⚠ Pass datoms that have already been filtered for visibility. This decides what
+// an entity carries among the datoms it is given; it does not decide which datoms
+// are visible, because that is ADR-002's single comparison site and not this
+// function's business.
+func Carried(datoms []Datom) map[string]Datom {
+	latest := make(map[string]Datom, len(datoms))
+	for _, d := range datoms {
+		if prior, seen := latest[d.Attribute]; seen && d.TxID.Compare(prior.TxID) <= 0 {
+			continue
+		}
+		latest[d.Attribute] = d
+	}
+	for name, d := range latest {
+		if !d.Assert {
+			delete(latest, name)
+		}
+	}
+	return latest
+}
+
 // Snapshot is the pair of values a read is evaluated at: a transaction
 // identifier bounding the system axis, and an instant on the business axis.
 //
