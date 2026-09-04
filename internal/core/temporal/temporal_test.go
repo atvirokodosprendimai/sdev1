@@ -83,6 +83,45 @@ func TestAtBindsBothAxesAndResolveDoesNot(t *testing.T) {
 	}
 }
 
+// TestBoundsRefusesAnUnboundBusinessAxis pins the two things [Query.Bounds] must
+// not do quietly.
+//
+// A snapshot takes two concrete values, and a query need not have both. Rendering
+// what is missing as a zero would turn "no bound on the business axis" into "at
+// the epoch" — an answer to a different question, arriving with no error.
+func TestBoundsRefusesAnUnboundBusinessAxis(t *testing.T) {
+	ptrTx := tx.TxID{HLC: hlc.Timestamp{Wall: 500}}
+
+	// ⚠ BOTH shapes of an unbound business axis. Testing only the empty query
+	// leaves the interesting one — a transaction bound with no instant — free to
+	// be accepted, and a mutant that refused only the empty case survived this
+	// test until the second half was added.
+	for name, q := range map[string]Query{
+		"nothing bound":             {},
+		"a transaction, no instant": {AsOf: &ptrTx},
+	} {
+		if _, _, ok := q.Bounds(); ok {
+			t.Errorf("Bounds accepted %s; zero is the epoch, which is a different question "+
+				"rather than an absent one", name)
+		}
+	}
+
+	// An OPEN system axis must become a bound nothing exceeds, or an open query
+	// would silently exclude the most recent writes.
+	id, instant, ok := (Query{ValidAt: ptr(past)}).Bounds()
+	if !ok {
+		t.Fatal("Bounds refused a query whose business axis is bound")
+	}
+	if instant != past {
+		t.Errorf("instant = %d, want %d", instant, past)
+	}
+	real := tx.TxID{HLC: hlc.Timestamp{Wall: 1 << 62, Logical: 9}, Leaf: leaf(t, "planet-3"), Seq: 4}
+	if real.Compare(id) >= 0 {
+		t.Errorf("an open system axis rendered as %s, which a real identifier %s does not sort "+
+			"below — an open query would then exclude recent writes", id, real)
+	}
+}
+
 // TestBackdatedWriteIsVisibleAtItsValidTime is the same rule stated as the
 // behaviour an operator sees: a fact recorded today but true since last year
 // must be returned by a query about last year.

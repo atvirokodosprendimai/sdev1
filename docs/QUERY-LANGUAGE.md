@@ -7,10 +7,11 @@ Everything else follows. There is no `SELECT_HISTORY`, no `AS_OF_SELECT`, no
 time qualifier — including one per leg of a shape, which costs nothing extra
 precisely because the qualifier is a clause rather than part of a verb's name.
 
-> **Status.** The language **parses**. Nothing **evaluates** it yet, because
-> there is no storage engine behind it (`docs/adr/BACKLOG.md` §20 and §12). Every
-> statement on this page is real — you can parse it today and inspect the tree —
-> but none of them returns rows. Where that changes what you should expect, this
+> **Status.** `SELECT`, `ASSERT`, `RETRACT`, `SEARCH` and `TRAVERSE` **run** —
+> against a session, and with `--dir` against a leaf on a disk that outlives the
+> process. `MATCH SHAPE` parses and is refused by name, because a similarity
+> metric chosen against no corpus is a number nobody has reason to believe
+> (`docs/adr/BACKLOG.md` §20). Where a statement parses and does not run, this
 > document says so rather than writing in a future tense that reads like a
 > promise.
 

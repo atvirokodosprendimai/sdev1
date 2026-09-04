@@ -5,7 +5,11 @@ import (
 	"testing"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/leafstore"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/temporal"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
 )
 
 // newDurableSession returns a session backed by a leaf in dir, on a clock the
@@ -123,6 +127,84 @@ func TestRehydrationAdvancesTheClockPastWhatItLoaded(t *testing.T) {
 	// time back, and a fact valid from 9000 is legitimately not true at 1000. A
 	// SELECT here would be measuring the business axis while claiming to measure
 	// the system one, and it would fail for a reason that is correct behaviour.
+}
+
+// TestTheSessionReaderHonoursItsSnapshot exercises the reader DIRECTLY, because
+// nothing else can see whether it does.
+//
+// ⚠ [eval.Select] filters again with the query the parser resolved, which is the
+// authoritative form — so a reader that ignored its snapshot entirely would still
+// produce the right rows through a statement, and a mutant that removed this
+// filter survived every other test in this package. The obligation is real
+// nonetheless: `ports.Reader.Load` promises datoms visible at a snapshot, and any
+// other consumer would be relying on it.
+func TestTheSessionReaderHonoursItsSnapshot(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newTestSession()
+	mustRun(t, s, `ASSERT planet-3 mass = "5" VALID FROM 500 TO 900`)
+
+	// Bounded well past anything the session minted, so only the business axis
+	// decides these two answers.
+	future := tx.TxID{HLC: hlc.Timestamp{Wall: 1 << 62}}
+	r := memoryReader{s}
+
+	inside, err := r.Load(ctx, "planet-3", ports.Snapshot{At: future, ValidAt: 600})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(inside) != 1 {
+		t.Errorf("Load at an instant inside the validity returned %d datoms, want 1", len(inside))
+	}
+
+	outside, err := r.Load(ctx, "planet-3", ports.Snapshot{At: future, ValidAt: 1500})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(outside) != 0 {
+		t.Errorf("Load at an instant after the validity ended returned %d datoms, want none — "+
+			"the reader is ignoring the snapshot it was handed", len(outside))
+	}
+}
+
+func TestASelectWithAStoreReadsThroughTheStore(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	tenant := addr.TenantFromUint(7)
+
+	store, err := leafstore.Open(dir, tenant.TenantSubtree())
+	if err != nil {
+		t.Fatalf("leafstore.Open: %v", err)
+	}
+	s, err := Open(tenant, func() int64 { return 1000 }, store)
+	if err != nil {
+		t.Fatalf("session.Open: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	// ⚠ Appended to the STORE behind the session's back, so this fact exists in
+	// the store and NOT in the session's rehydrated map. It is the only
+	// observation that tells the two read paths apart: with both populated they
+	// give the same answer, and a session that quietly answered from its own map
+	// would look correct forever.
+	//
+	// It is deliberately not a supported topology — one leaf has one fenced
+	// writer — but it is the read path stated as something a test can see.
+	if err := store.Append(ctx, ports.Datom{
+		Entity: "planet-9", Attribute: "mass", Value: []byte("1.9e27"),
+		Valid: temporal.Interval{From: 0, To: temporal.Forever},
+		TxID:  tx.TxID{HLC: hlc.Timestamp{Wall: 500}, Seq: 1}, Assert: true,
+	}); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	got := mustRun(t, s, `SELECT * FROM planet-9`)
+	if len(got.Rows) != 1 {
+		t.Fatalf("SELECT returned %d rows for a fact only the store holds; the session is "+
+			"answering from its own map rather than through the store", len(got.Rows))
+	}
+	if got.Rows[0].Value != "1.9e27" {
+		t.Errorf("value came back as %q", got.Rows[0].Value)
+	}
 }
 
 func TestAWriteReachesTheStore(t *testing.T) {

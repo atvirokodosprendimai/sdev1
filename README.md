@@ -93,14 +93,14 @@ to write into a different tenant's subtree.
 
 ## What you can actually do today
 
-**Short version: you can parse any query; run search, addressing and a session;
-and write facts to a disk and read them back after a restart. What is missing is
-a query evaluator, a network, and everything that needs one.**
+**Short version: you can write facts, read them back at any instant, filter,
+search, traverse links, and keep all of it on a disk across restarts. What is
+missing is a network, a planner, and everything that needs one.**
 
 | | Status | What that means |
 |---|---|---|
-| `SELECT … FROM … WHERE … AS OF … TRANSACTION …` | **parses** | The tree is correct and the time defaults resolve. Nothing executes it. |
-| `MATCH SHAPE LIKE … REQUIRE … OPTIONAL … SIMILARITY …` | **parses** | Same. Per-leg time qualifiers work. |
+| `SELECT … FROM … WHERE … AS OF … TRANSACTION …` | **runs** | Against a session or a leaf. ⚠ `WHERE` **filters** — until ADR-027 it parsed and was discarded, so a narrow question got a wide answer with no error. A comparison is numeric only when the literal was written as one. |
+| `MATCH SHAPE LIKE … REQUIRE … OPTIONAL … SIMILARITY …` | **parses, refused by name** | Per-leg time qualifiers work. It needs a similarity metric, and one chosen against no corpus is a number nobody has reason to believe. |
 | `SEARCH … IN … FACET BY … LIMIT …` | **parses + runs** | Against an **in-memory** index: real ranking, real facets, erasure honoured. Not persisted. |
 | Backtick-quoted identifiers — `` `limit` `` | **works** | Any keyword is addressable as an attribute name. |
 | Placing an entity in the trie | **runs** | `cmd/sdev1-addr`, end to end, no network. |
@@ -112,7 +112,7 @@ a query evaluator, a network, and everything that needs one.**
 | **Joins, `AND`/`OR`, `ORDER BY`, `COUNT`** | ❌ | See the query guide's boundary table for which are decisions and which are gaps. |
 | Writing a segment to a disk, reading a block back | **runs** | `internal/core/segstore`. Published by atomic rename, so a half-written segment is not addressable rather than being guarded; index verified before any offset from it is followed; the file is read through a memory mapping. macOS and Linux. |
 | A fact you `ASSERT` surviving a restart | **runs** | `sdev1-ql --dir ./leaf`, twice. A leaf is a directory of segments; a read merges them by the datoms' own transaction identifiers, so ⚠ **renaming the files does not change the answer**. |
-| Reading a stored fact back | ❌ | No query evaluator. |
+| Reading a stored fact back | **runs** | `SELECT` evaluates against any `ports.Reader`, so the same statement answers from memory or from a leaf, costing one entity read either way. |
 | A server, a cluster, a network | ❌ | No transport. Everything is in-process. |
 
 → **[How to query, with the full grammar and worked examples](docs/QUERY-LANGUAGE.md)**
@@ -124,16 +124,16 @@ Read this before anything else on the page.
 
 **The decisions are made and recorded. Much of the machinery that would execute
 them is not built.** Twenty-four decision records are Accepted, each governs real
-Go code, and 31 of 32 packages pass under the race detector. A fact now survives
+Go code, and 32 of 33 packages pass under the race detector. A fact now survives
 process — but there is still no network transport and no query evaluator, so
 **you cannot yet start a server and store a fact through it.**
 
 | | |
 |---|---|
-| **Runs today** | 32 Go packages, 337 tests, race-clean — 31 packages carry tests and the thirty-second, `cmd/sdev1-ql`, is proved by its record's fence running the built binary twice. Two binaries, `sdev1-addr` and `sdev1-ql`. |
-| **Exists now** | A storage engine you can use: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, and a session that rehydrates from one. |
-| **Does not exist** | A transport, a query evaluator, a node binary, a running cluster, and the wiring from the session to the segment store. |
-| **Honestly measured** | 211 mutants killed across the corpus, 11 recorded as *survived* — those rows are kept rather than deleted, because a mutant that lived is the record of what the suite could not see. |
+| **Runs today** | 33 Go packages, 350 tests, race-clean — 32 packages carry tests and the thirty-third, `cmd/sdev1-ql`, is proved by its records' fences running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
+| **Exists now** | A storage engine and an evaluator: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, and a `SELECT` that reads one entity out of it and filters. |
+| **Does not exist** | A transport, a query planner, a similarity metric, a node binary, a running cluster. |
+| **Honestly measured** | 223 mutants killed across the corpus, 14 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see, and three of these found claims that nothing was holding. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are
@@ -741,7 +741,7 @@ cmd/sdev1-addr/           the one binary: where an entity lives, and why
 docs/
   QUERY-LANGUAGE.md       the language, its grammar, and a tutorial
   diagrams/               the schematics on this page
-    adr/                    the decision corpus — twenty-six Accepted records
+    adr/                    the decision corpus — twenty-seven Accepted records
     README.md             the index; says which half of each record is built
     FAILURES.md           the catalogue of what this does NOT survive
     BACKLOG.md            every deferred item, with a pointer back
@@ -750,7 +750,7 @@ internal/core/
   hlc tx temporal               time: clock, identity, the two axes
   command ql                    the write path's reads, and the language
   segment datom segstore        a block, a fact inside one, and a file of blocks
-  leafstore                     many segments answering as one leaf
+  leafstore eval                many segments as one leaf, and what a statement means
   erasure crypt                 coding, and the erasure of a subject
   tail commit lease             the live tail, the commit point, fenced ownership
   routing prefetch admit        finding a leaf, reading ahead, shedding load
