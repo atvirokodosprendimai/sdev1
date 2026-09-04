@@ -17,15 +17,21 @@ told apart from a working one, by a caller or by a test.
 
 ### 1 · A storage engine — write a segment to a disk, find a block inside one · §12
 
-The single largest gap. Twenty records describe how bytes are laid out, coded,
-encrypted and addressed; nothing puts one on a disk or finds it again.
+**The bottom half is done.** ADR-024 and `internal/core/segstore` write a run of
+blocks to a file and find one again by key: a segment is built under a temporary
+name and published by an atomic rename, its index is written last and located
+from a fixed-width trailer, and a sealed segment is read through a memory
+mapping. Data outlives a process for the first time.
 
-Needs, roughly in order: a segment writer, a block index, a way to open a sealed
-segment and locate a block by key, and the decision in **§15** — when the live
-tail is sealed, and how an index over it is published.
+⚠ **The constraint that had to survive did survive, and it is the reason for the
+rename:** nothing is observable in a half-sealed state, so ADR-017's lock-free
+read path holds on real files — an incomplete segment is not addressable rather
+than being guarded by a flag every reader must remember to check.
 
-⚠ The constraint that must survive: sealing publishes by swapping an immutable
-manifest. Nothing may be observable in a half-sealed state.
+What is still missing above it: **§15** — when the live tail is sealed, and how a
+manifest naming which segments exist is published. ⚠ The rename makes each FILE
+atomic and says nothing about a SET of them, so publishing a segment and
+publishing the manifest that names it have to be ordered.
 
 ### 2 · A query evaluator · §20
 
@@ -63,7 +69,7 @@ unimplementable.
 | **§27** | Persist the search index and confirm candidates against the datoms. ⚠The confirmation is the rule that decays quietest, because skipping it makes every search faster and the damage shows only on data that changed |
 | **§28** | Make writes durable. `ASSERT`/`RETRACT` run against an in-memory session today and lose everything on exit |
 
-| **§29** | Write a link and walk one from the language. ⚠A traversal statement must carry ONE time clause for the whole walk — a per-hop qualifier would make the tree-that-never-existed something a caller can request on purpose |
+| **§29** | ✅ done — `ASSERT a orbits = ->b` writes a link and `TRAVERSE a DEPTH 2 AS OF 150` walks one. What remains under this number is inbound edges: nothing answers "what points AT this" without a scan |
 
 ---
 
@@ -148,7 +154,7 @@ it at both ends.
 | | |
 |---|---|
 | ✅ | A comprehensive README, schematics, and a query-language guide with a tutorial |
-| | **A `sdev1-ql` binary** that parses a statement and prints the tree it produced, the way `sdev1-addr` makes addressing visible in one command. Deliberately *not* added yet: `cmd/**` is governed, so it needs a record and its own evidence rather than appearing beside the docs |
+| ✅ | **`cmd/sdev1-ql`** — runs statements against an in-memory session and prints what they did, the way `sdev1-addr` makes addressing visible in one command. Shipped under ADR-022 T2 with its own record and evidence |
 | | **A worked end-to-end tutorial** — currently impossible past parsing, because the tutorial would have to stop where the evaluator does |
 | | **Measure whether a model calls the agent tools correctly from their descriptions alone.** Every refusal is written into a tool's description on the reasoning that it is the only documentation that caller gets. That is reasoned, not observed, and the failure mode is a caller that never reports being confused — it just calls the wrong thing |
 | | **Measure an incremental tool over the mount** — two `rsync -n` passes with no writes between them, confirming the second copies nothing. The mtime rule is reasoned, and the failure it prevents is invisible except at scale |
