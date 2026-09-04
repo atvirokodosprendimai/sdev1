@@ -109,3 +109,4 @@ that will ask for it is "we are overloaded, shed everything".
 - 2026-09-04 · aa9ce5e* · exit 0 · `set -o pipefail …` · acceptance-sha256:9e3be1b5c18def61f6e95b907c6cbb0b790289e1b97b0bdc1c75307635d820fe · ms:3500
 - 2026-09-04 · aa9ce5e* · exit 0 · `set -o pipefail …` · acceptance-sha256:9e3be1b5c18def61f6e95b907c6cbb0b790289e1b97b0bdc1c75307635d820fe · ms:3317
 - 2026-09-04 · aa9ce5e* · exit 0 · `set -o pipefail …` · acceptance-sha256:9e3be1b5c18def61f6e95b907c6cbb0b790289e1b97b0bdc1c75307635d820fe · ms:3375
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:9e3be1b5c18def61f6e95b907c6cbb0b790289e1b97b0bdc1c75307635d820fe · ms:3479

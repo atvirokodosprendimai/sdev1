@@ -110,3 +110,4 @@ the value would then be a constant nobody wrote down.
 - 2026-09-04 · 4016ba8* · exit 0 · `set -o pipefail …` · acceptance-sha256:b3e4c7f81b1f5a7d1b5a52934499a7d9b03813881ecb1682d0594cd082410394 · ms:3817
 - 2026-09-04 · 4016ba8* · exit 0 · `set -o pipefail …` · acceptance-sha256:b3e4c7f81b1f5a7d1b5a52934499a7d9b03813881ecb1682d0594cd082410394 · ms:3845
 - 2026-09-04 · 4016ba8* · exit 0 · `set -o pipefail …` · acceptance-sha256:b3e4c7f81b1f5a7d1b5a52934499a7d9b03813881ecb1682d0594cd082410394 · ms:3938
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:b3e4c7f81b1f5a7d1b5a52934499a7d9b03813881ecb1682d0594cd082410394 · ms:4007

@@ -100,3 +100,4 @@ not just a count — and belongs with whatever record owns repair.
 - 2026-09-04 · 6036c3a* · exit 0 · `set -o pipefail …` · acceptance-sha256:7a1f1e55c433b92352e543469a7714a971b12409b2f4fce36b0a67c9af0abe5c · ms:996
 - 2026-09-04 · 6036c3a* · exit 0 · `set -o pipefail …` · acceptance-sha256:7a1f1e55c433b92352e543469a7714a971b12409b2f4fce36b0a67c9af0abe5c · ms:966
 - 2026-09-04 · 6036c3a* · exit 0 · `set -o pipefail …` · acceptance-sha256:7a1f1e55c433b92352e543469a7714a971b12409b2f4fce36b0a67c9af0abe5c · ms:1001
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:7a1f1e55c433b92352e543469a7714a971b12409b2f4fce36b0a67c9af0abe5c · ms:945

@@ -101,3 +101,4 @@ package does — so it is a design conversation, not an implementation detail.
 - 2026-09-04 · 60fc258* · exit 0 · `set -o pipefail …` · acceptance-sha256:340ba7f8aff5e8eb50b4823faa28fe17e353dc0c08bbb83c31b534dd6d4fbc81 · ms:1658
 - 2026-09-04 · 60fc258* · exit 0 · `set -o pipefail …` · acceptance-sha256:340ba7f8aff5e8eb50b4823faa28fe17e353dc0c08bbb83c31b534dd6d4fbc81 · ms:1670
 - 2026-09-04 · 60fc258* · exit 0 · `set -o pipefail …` · acceptance-sha256:340ba7f8aff5e8eb50b4823faa28fe17e353dc0c08bbb83c31b534dd6d4fbc81 · ms:1830
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:340ba7f8aff5e8eb50b4823faa28fe17e353dc0c08bbb83c31b534dd6d4fbc81 · ms:1798

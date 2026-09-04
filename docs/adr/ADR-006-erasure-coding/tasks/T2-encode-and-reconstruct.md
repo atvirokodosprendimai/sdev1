@@ -112,3 +112,4 @@ whole project ships rather than just how a block is stored.
 - 2026-09-04 · b3162b1* · exit 0 · `set -o pipefail …` · acceptance-sha256:6e7cc5f69a3d1ef77424fb858b936df5ead9cb80c261453abd3d48ae112a9e6b · ms:1431
 - 2026-09-04 · b3162b1* · exit 0 · `set -o pipefail …` · acceptance-sha256:6e7cc5f69a3d1ef77424fb858b936df5ead9cb80c261453abd3d48ae112a9e6b · ms:1386
 - 2026-09-04 · b3162b1* · exit 0 · `set -o pipefail …` · acceptance-sha256:6e7cc5f69a3d1ef77424fb858b936df5ead9cb80c261453abd3d48ae112a9e6b · ms:1414
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:6e7cc5f69a3d1ef77424fb858b936df5ead9cb80c261453abd3d48ae112a9e6b · ms:1376

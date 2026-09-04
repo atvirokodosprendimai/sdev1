@@ -107,3 +107,4 @@ naming nobody, and a diagnostic field is the most likely way that is lost.
 - 2026-09-04 · 9b30287* · exit 0 · `set -o pipefail …` · acceptance-sha256:97db313eadda7b30cf03193c1221ba9408a1be00709e367de2af51ebd3b8cc8f · ms:2039
 - 2026-09-04 · 9b30287* · exit 0 · `set -o pipefail …` · acceptance-sha256:97db313eadda7b30cf03193c1221ba9408a1be00709e367de2af51ebd3b8cc8f · ms:2128
 - 2026-09-04 · 9b30287* · exit 0 · `set -o pipefail …` · acceptance-sha256:97db313eadda7b30cf03193c1221ba9408a1be00709e367de2af51ebd3b8cc8f · ms:2066
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:97db313eadda7b30cf03193c1221ba9408a1be00709e367de2af51ebd3b8cc8f · ms:2222

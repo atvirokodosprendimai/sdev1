@@ -109,3 +109,4 @@ incident, which is exactly when it must not be.
 - 2026-09-04 · 15ace10* · exit 0 · `set -o pipefail …` · acceptance-sha256:24bb04b00f9015de24a3b03fc5aee5dac671b5c3b269264c85f162ef4589e2a3 · ms:3610
 - 2026-09-04 · 15ace10* · exit 0 · `set -o pipefail …` · acceptance-sha256:24bb04b00f9015de24a3b03fc5aee5dac671b5c3b269264c85f162ef4589e2a3 · ms:3378
 - 2026-09-04 · 15ace10* · exit 0 · `set -o pipefail …` · acceptance-sha256:24bb04b00f9015de24a3b03fc5aee5dac671b5c3b269264c85f162ef4589e2a3 · ms:3360
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:24bb04b00f9015de24a3b03fc5aee5dac671b5c3b269264c85f162ef4589e2a3 · ms:3513

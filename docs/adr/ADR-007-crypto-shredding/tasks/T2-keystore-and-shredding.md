@@ -110,3 +110,4 @@ one.
 - 2026-09-04 · 9b30287* · exit 0 · `set -o pipefail …` · acceptance-sha256:8272cb67f3d958adbe089c10bba15f351e5e2ec5dff0c50aae3ace2aa47d905a · ms:3996
 - 2026-09-04 · 9b30287* · exit 0 · `set -o pipefail …` · acceptance-sha256:8272cb67f3d958adbe089c10bba15f351e5e2ec5dff0c50aae3ace2aa47d905a · ms:3875
 - 2026-09-04 · 9b30287* · exit 0 · `set -o pipefail …` · acceptance-sha256:8272cb67f3d958adbe089c10bba15f351e5e2ec5dff0c50aae3ace2aa47d905a · ms:3920
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:8272cb67f3d958adbe089c10bba15f351e5e2ec5dff0c50aae3ace2aa47d905a · ms:4060

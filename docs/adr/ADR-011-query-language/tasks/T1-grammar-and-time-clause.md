@@ -187,3 +187,4 @@ prevent, and it is what a caller will ask for.
 - 2026-09-04 · c32c4bd* · exit 0 · `set -o pipefail …` · acceptance-sha256:c189f09c2b763aaa57deb8942f892d6d4e30e6866d8f1ae7843d1d291f8d73c2 · ms:3712
 - 2026-09-04 · c32c4bd* · exit 0 · `set -o pipefail …` · acceptance-sha256:c189f09c2b763aaa57deb8942f892d6d4e30e6866d8f1ae7843d1d291f8d73c2 · ms:3663
 - 2026-09-04 · c32c4bd* · exit 0 · `set -o pipefail …` · acceptance-sha256:c189f09c2b763aaa57deb8942f892d6d4e30e6866d8f1ae7843d1d291f8d73c2 · ms:3611
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:c189f09c2b763aaa57deb8942f892d6d4e30e6866d8f1ae7843d1d291f8d73c2 · ms:3871

@@ -115,3 +115,4 @@ exactly two qualifiers, and a third makes the table incomplete rather than wrong
 - 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1197
 - 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1188
 - 2026-09-04 · 4016ba8* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1427
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1086

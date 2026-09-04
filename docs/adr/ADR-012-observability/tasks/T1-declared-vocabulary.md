@@ -103,3 +103,4 @@ becomes a log — after which the console is a grep again.
 - 2026-09-04 · 15ace10* · exit 0 · `set -o pipefail …` · acceptance-sha256:46ecf53985e1ad5bd25a0ae2d335f0554a31f5324f21a19ce2fdb0649a404bc7 · ms:1724
 - 2026-09-04 · 15ace10* · exit 0 · `set -o pipefail …` · acceptance-sha256:46ecf53985e1ad5bd25a0ae2d335f0554a31f5324f21a19ce2fdb0649a404bc7 · ms:1702
 - 2026-09-04 · aa9ce5e* · exit 0 · `set -o pipefail …` · acceptance-sha256:46ecf53985e1ad5bd25a0ae2d335f0554a31f5324f21a19ce2fdb0649a404bc7 · ms:1792
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:46ecf53985e1ad5bd25a0ae2d335f0554a31f5324f21a19ce2fdb0649a404bc7 · ms:1818

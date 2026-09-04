@@ -105,3 +105,4 @@ revisit rather than an exception to grant.
 - 2026-09-04 · ed35910* · exit 0 · `set -o pipefail …` · acceptance-sha256:ca83d95ee365cddeb5ebbe2413dfdd30dc9be5a1e48695cd66af55ba50691445 · ms:4109
 - 2026-09-04 · ed35910* · exit 0 · `set -o pipefail …` · acceptance-sha256:ca83d95ee365cddeb5ebbe2413dfdd30dc9be5a1e48695cd66af55ba50691445 · ms:3963
 - 2026-09-04 · ed35910* · exit 0 · `set -o pipefail …` · acceptance-sha256:ca83d95ee365cddeb5ebbe2413dfdd30dc9be5a1e48695cd66af55ba50691445 · ms:3922
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:ca83d95ee365cddeb5ebbe2413dfdd30dc9be5a1e48695cd66af55ba50691445 · ms:4465

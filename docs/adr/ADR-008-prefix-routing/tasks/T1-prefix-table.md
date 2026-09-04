@@ -100,3 +100,4 @@ makes a route a second placement policy, which ADR-004 already owns.
 - 2026-09-04 · bbb6744* · exit 0 · `set -o pipefail …` · acceptance-sha256:9cdda6ff5883a08745927ee456af25fead7eb6db5a38351ac7bc64938bdf391a · ms:1697
 - 2026-09-04 · bbb6744* · exit 0 · `set -o pipefail …` · acceptance-sha256:9cdda6ff5883a08745927ee456af25fead7eb6db5a38351ac7bc64938bdf391a · ms:1802
 - 2026-09-04 · bbb6744* · exit 0 · `set -o pipefail …` · acceptance-sha256:9cdda6ff5883a08745927ee456af25fead7eb6db5a38351ac7bc64938bdf391a · ms:1746
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:9cdda6ff5883a08745927ee456af25fead7eb6db5a38351ac7bc64938bdf391a · ms:1844

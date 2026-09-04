@@ -119,3 +119,4 @@ entity boundary — and it breaks it silently, because every write succeeds.
 - 2026-09-04 · 535b086* · exit 0 · `set -o pipefail …` · acceptance-sha256:0f0d97aa4a04bcc9430ef4df4f4c5e55da846770af26ad835be9e39b7f8ecc91 · ms:3549
 - 2026-09-04 · 535b086* · exit 0 · `set -o pipefail …` · acceptance-sha256:0f0d97aa4a04bcc9430ef4df4f4c5e55da846770af26ad835be9e39b7f8ecc91 · ms:3548
 - 2026-09-04 · 535b086* · exit 0 · `set -o pipefail …` · acceptance-sha256:0f0d97aa4a04bcc9430ef4df4f4c5e55da846770af26ad835be9e39b7f8ecc91 · ms:3538
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:0f0d97aa4a04bcc9430ef4df4f4c5e55da846770af26ad835be9e39b7f8ecc91 · ms:3923

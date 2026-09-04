@@ -108,3 +108,4 @@ kill on a node serving other tenants.
 - 2026-09-04 · bfac0e5* · exit 0 · `set -o pipefail …` · acceptance-sha256:dc37b108f2a3aaa556260f93c2970028bccbbc9de36488d09513318e42777658 · ms:3644
 - 2026-09-04 · bfac0e5* · exit 0 · `set -o pipefail …` · acceptance-sha256:dc37b108f2a3aaa556260f93c2970028bccbbc9de36488d09513318e42777658 · ms:3747
 - 2026-09-04 · bfac0e5* · exit 0 · `set -o pipefail …` · acceptance-sha256:dc37b108f2a3aaa556260f93c2970028bccbbc9de36488d09513318e42777658 · ms:3609
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:dc37b108f2a3aaa556260f93c2970028bccbbc9de36488d09513318e42777658 · ms:3706

@@ -126,3 +126,4 @@ runs inside one binary.
 - 2026-09-04 · fda1ea4* · exit 0 · `set -o pipefail …` · acceptance-sha256:af920c4a9502b30d10436b29c3b5a79336df0bb7cc095f0ddc1b30f843d460ae · ms:3998
 - 2026-09-04 · fda1ea4* · exit 0 · `set -o pipefail …` · acceptance-sha256:af920c4a9502b30d10436b29c3b5a79336df0bb7cc095f0ddc1b30f843d460ae · ms:4090
 - 2026-09-04 · fda1ea4* · exit 0 · `set -o pipefail …` · acceptance-sha256:af920c4a9502b30d10436b29c3b5a79336df0bb7cc095f0ddc1b30f843d460ae · ms:4011
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:af920c4a9502b30d10436b29c3b5a79336df0bb7cc095f0ddc1b30f843d460ae · ms:4003

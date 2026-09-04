@@ -96,3 +96,4 @@ inheriting either existing set.
 - 2026-09-04 · 6036c3a* · exit 0 · `set -o pipefail …` · acceptance-sha256:ca0b26ab7257dd11986af9ff3d17f978aac3e2cef7deb5cc948ae0d8fd571f34 · ms:459
 - 2026-09-04 · 6036c3a* · exit 0 · `set -o pipefail …` · acceptance-sha256:ca0b26ab7257dd11986af9ff3d17f978aac3e2cef7deb5cc948ae0d8fd571f34 · ms:451
 - 2026-09-04 · 6036c3a* · exit 0 · `set -o pipefail …` · acceptance-sha256:ca0b26ab7257dd11986af9ff3d17f978aac3e2cef7deb5cc948ae0d8fd571f34 · ms:512
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:ca0b26ab7257dd11986af9ff3d17f978aac3e2cef7deb5cc948ae0d8fd571f34 · ms:478

@@ -118,3 +118,4 @@ it" hides, and a single verb is how a mark gets reported as an erasure.
 - 2026-09-04 · 60fc258* · exit 0 · `set -o pipefail …` · acceptance-sha256:ec6900a709d59bacbd787ca255c9aac0ebd112878064974bc0907d29a4974236 · ms:3826
 - 2026-09-04 · 60fc258* · exit 0 · `set -o pipefail …` · acceptance-sha256:ec6900a709d59bacbd787ca255c9aac0ebd112878064974bc0907d29a4974236 · ms:3859
 - 2026-09-04 · 60fc258* · exit 0 · `set -o pipefail …` · acceptance-sha256:ec6900a709d59bacbd787ca255c9aac0ebd112878064974bc0907d29a4974236 · ms:3888
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:ec6900a709d59bacbd787ca255c9aac0ebd112878064974bc0907d29a4974236 · ms:4236

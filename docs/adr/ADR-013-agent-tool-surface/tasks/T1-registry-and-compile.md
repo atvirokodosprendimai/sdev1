@@ -114,3 +114,4 @@ and absent attributes.
 - 2026-09-04 · 535b086* · exit 0 · `set -o pipefail …` · acceptance-sha256:713c94df040746c9adf57a741497c0f515b29678b7f39ec91a2e5451f9642cf1 · ms:3634
 - 2026-09-04 · 535b086* · exit 0 · `set -o pipefail …` · acceptance-sha256:713c94df040746c9adf57a741497c0f515b29678b7f39ec91a2e5451f9642cf1 · ms:3751
 - 2026-09-04 · 535b086* · exit 0 · `set -o pipefail …` · acceptance-sha256:713c94df040746c9adf57a741497c0f515b29678b7f39ec91a2e5451f9642cf1 · ms:3552
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:713c94df040746c9adf57a741497c0f515b29678b7f39ec91a2e5451f9642cf1 · ms:3959

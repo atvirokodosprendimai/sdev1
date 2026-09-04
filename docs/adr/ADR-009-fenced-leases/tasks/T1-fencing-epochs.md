@@ -102,3 +102,4 @@ so all of them permit two live writers.
 - 2026-09-04 · 5cb6794* · exit 0 · `set -o pipefail …` · acceptance-sha256:43d3aec3bcfc1c30ed53fa3048bec768e369bb1753e163cef0bf83ce820fa0bd · ms:1704
 - 2026-09-04 · 5cb6794* · exit 0 · `set -o pipefail …` · acceptance-sha256:43d3aec3bcfc1c30ed53fa3048bec768e369bb1753e163cef0bf83ce820fa0bd · ms:1708
 - 2026-09-04 · 5cb6794* · exit 0 · `set -o pipefail …` · acceptance-sha256:43d3aec3bcfc1c30ed53fa3048bec768e369bb1753e163cef0bf83ce820fa0bd · ms:1715
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:43d3aec3bcfc1c30ed53fa3048bec768e369bb1753e163cef0bf83ce820fa0bd · ms:1757

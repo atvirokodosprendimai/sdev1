@@ -108,3 +108,4 @@ drift, and the one a reader uses will not be the one the writer waited for.
 - 2026-09-04 · e226454* · exit 0 · `set -o pipefail …` · acceptance-sha256:690b1c0be001730bb56ca68af6c66718edff386495f998c5e69dfa56f707e754 · ms:3820
 - 2026-09-04 · e226454* · exit 0 · `set -o pipefail …` · acceptance-sha256:690b1c0be001730bb56ca68af6c66718edff386495f998c5e69dfa56f707e754 · ms:3723
 - 2026-09-04 · e226454* · exit 0 · `set -o pipefail …` · acceptance-sha256:690b1c0be001730bb56ca68af6c66718edff386495f998c5e69dfa56f707e754 · ms:3616
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:690b1c0be001730bb56ca68af6c66718edff386495f998c5e69dfa56f707e754 · ms:3686

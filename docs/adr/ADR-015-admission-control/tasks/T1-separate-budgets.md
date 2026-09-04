@@ -101,3 +101,4 @@ reintroduce the coupling that lets a read storm stop a leaf's writes.
 - 2026-09-04 · aa9ce5e* · exit 0 · `set -o pipefail …` · acceptance-sha256:20cfa4eb832871f2f8654dc0b1840d4a2e0bc77f780b2c512435f19b85848207 · ms:1704
 - 2026-09-04 · aa9ce5e* · exit 0 · `set -o pipefail …` · acceptance-sha256:20cfa4eb832871f2f8654dc0b1840d4a2e0bc77f780b2c512435f19b85848207 · ms:1737
 - 2026-09-04 · aa9ce5e* · exit 0 · `set -o pipefail …` · acceptance-sha256:20cfa4eb832871f2f8654dc0b1840d4a2e0bc77f780b2c512435f19b85848207 · ms:1819
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:20cfa4eb832871f2f8654dc0b1840d4a2e0bc77f780b2c512435f19b85848207 · ms:1701

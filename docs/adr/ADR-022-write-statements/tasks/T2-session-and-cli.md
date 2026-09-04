@@ -99,6 +99,12 @@ otherwise pass.
 - 2026-09-04 · dba7be4* · mutant killed · exit 1 · `internal/core/session/session.go` · stops excluding datoms the snapshot cannot see, so every read returns the latest value whatever instant it asked about. Time travel becomes a silent no-op: AS OF still parses and still resolves, and the answer is identical either way · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:a read at a past instant not seeing a later write
 - 2026-09-04 · dba7be4* · mutant killed · exit 1 · `internal/core/session/session.go` · lets a statement VALID FROM clause move the TRANSACTION identifier — the exact forgery the language was shaped to make unsayable, reintroduced one layer down where nothing about the grammar would reveal it · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:the session assigning transaction time rather than the caller
 - 2026-09-04 · dba7be4* · mutant killed · exit 1 · `internal/core/session/session.go` · stops indexing on the write path, so SEARCH finds nothing that arrived through ASSERT. A test that populated the index itself would still pass, which is exactly why the test only ever touches the index through the two statements · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:a search finding a fact that was asserted rather than indexed by hand
+- 2026-09-04 · 09ec963 · mutant inconclusive · exit 1 · `internal/core/session/session.go` · ignores the visibility predicate, so every read returns the latest value whatever instant it asked about. Time travel silently becomes a no-op: AS OF parses, resolves, and changes nothing about the answer · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:a read at a past instant not seeing a later write
+  ```
+  the fence failed on a build/parse error, not an assertion
+  ```
+- 2026-09-04 · 09ec963* · mutant killed · exit 1 · `internal/core/session/session.go` · lets a statement VALID FROM clause move the TRANSACTION identifier, which is the exact forgery the language was shaped to make unsayable — reintroduced one layer down, where nothing about the grammar would reveal it · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:the session assigning transaction time rather than the caller
+- 2026-09-04 · 09ec963* · mutant killed · exit 1 · `internal/core/session/session.go` · stops indexing on the write path, so SEARCH finds nothing that arrived through ASSERT. A test that populated the index itself would still pass, which is why the test only ever touches the index through the two statements · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:a search finding a fact that was asserted rather than indexed by hand
 
 ## Invariants
 
@@ -139,3 +145,7 @@ specifications and the one nobody wrote down is the one people run.
 - 2026-09-04 · dba7be4* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2896
 - 2026-09-04 · dba7be4* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2859
 - 2026-09-04 · dba7be4* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2862
+- 2026-09-04 · 09ec963 · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:3029
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:3045
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2809
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2791

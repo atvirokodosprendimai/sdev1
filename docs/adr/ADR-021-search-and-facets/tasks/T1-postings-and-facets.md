@@ -116,3 +116,4 @@ already be plaintext, in every replica and every backup of the index.
 - 2026-09-04 · 9636aaf* · exit 0 · `set -o pipefail …` · acceptance-sha256:4b2cea3a18456d5b0e5e8aef6bd32a52d2bcafa6896256294abe47acb9815ef2 · ms:3908
 - 2026-09-04 · 9636aaf* · exit 0 · `set -o pipefail …` · acceptance-sha256:4b2cea3a18456d5b0e5e8aef6bd32a52d2bcafa6896256294abe47acb9815ef2 · ms:3813
 - 2026-09-04 · 9636aaf* · exit 0 · `set -o pipefail …` · acceptance-sha256:4b2cea3a18456d5b0e5e8aef6bd32a52d2bcafa6896256294abe47acb9815ef2 · ms:3905
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:4b2cea3a18456d5b0e5e8aef6bd32a52d2bcafa6896256294abe47acb9815ef2 · ms:3944

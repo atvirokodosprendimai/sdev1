@@ -106,3 +106,4 @@ prefetch would make a node shed the reads it was accelerating.
 - 2026-09-04 · bfac0e5* · exit 0 · `set -o pipefail …` · acceptance-sha256:b8a67e3b7cff4394c68b9b0bec3b263d43d88c2743db2e1516f203411fa0c9af · ms:3798
 - 2026-09-04 · bfac0e5* · exit 0 · `set -o pipefail …` · acceptance-sha256:b8a67e3b7cff4394c68b9b0bec3b263d43d88c2743db2e1516f203411fa0c9af · ms:3732
 - 2026-09-04 · bfac0e5* · exit 0 · `set -o pipefail …` · acceptance-sha256:b8a67e3b7cff4394c68b9b0bec3b263d43d88c2743db2e1516f203411fa0c9af · ms:3714
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:b8a67e3b7cff4394c68b9b0bec3b263d43d88c2743db2e1516f203411fa0c9af · ms:3646

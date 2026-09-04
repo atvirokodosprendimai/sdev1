@@ -102,3 +102,4 @@ are how a cluster ends up holding data at a durability nobody chose.
 - 2026-09-04 · e226454* · exit 0 · `set -o pipefail …` · acceptance-sha256:06a94407025d6a9c7afcaffb614513f52a2d8cc4404cc6dcb03896076483c848 · ms:3393
 - 2026-09-04 · e226454* · exit 0 · `set -o pipefail …` · acceptance-sha256:06a94407025d6a9c7afcaffb614513f52a2d8cc4404cc6dcb03896076483c848 · ms:3360
 - 2026-09-04 · e226454* · exit 0 · `set -o pipefail …` · acceptance-sha256:06a94407025d6a9c7afcaffb614513f52a2d8cc4404cc6dcb03896076483c848 · ms:3460
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:06a94407025d6a9c7afcaffb614513f52a2d8cc4404cc6dcb03896076483c848 · ms:3497

@@ -105,3 +105,4 @@ Alternatives, and reintroducing it changes what this package is.
 - 2026-09-04 · 4f1c065* · exit 0 · `set -o pipefail …` · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · ms:1638
 - 2026-09-04 · 4f1c065* · exit 0 · `set -o pipefail …` · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · ms:1651
 - 2026-09-04 · 4f1c065* · exit 0 · `set -o pipefail …` · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · ms:1615
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · ms:1591

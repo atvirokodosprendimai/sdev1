@@ -111,3 +111,4 @@ against that needs the key material ADR-007 owns.
 - 2026-09-04 · b3162b1* · exit 0 · `set -o pipefail …` · acceptance-sha256:a8ad43fca75a9a04677c67fcb87a51d69780ee1ea61a439ca816b008f05a33d6 · ms:671
 - 2026-09-04 · b3162b1* · exit 0 · `set -o pipefail …` · acceptance-sha256:a8ad43fca75a9a04677c67fcb87a51d69780ee1ea61a439ca816b008f05a33d6 · ms:560
 - 2026-09-04 · b3162b1* · exit 0 · `set -o pipefail …` · acceptance-sha256:a8ad43fca75a9a04677c67fcb87a51d69780ee1ea61a439ca816b008f05a33d6 · ms:602
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:a8ad43fca75a9a04677c67fcb87a51d69780ee1ea61a439ca816b008f05a33d6 · ms:707

@@ -148,3 +148,4 @@ before callers exist rather than after.
 - 2026-09-04 · c07f4df* · exit 0 · `set -o pipefail …` · acceptance-sha256:00cb57f096fe7a1c094c872b2164a45444daa96e1efa41704b6a5d9acaa826af · ms:1149
 - 2026-09-04 · c07f4df* · exit 0 · `set -o pipefail …` · acceptance-sha256:00cb57f096fe7a1c094c872b2164a45444daa96e1efa41704b6a5d9acaa826af · ms:1167
 - 2026-09-04 · c07f4df* · exit 0 · `set -o pipefail …` · acceptance-sha256:00cb57f096fe7a1c094c872b2164a45444daa96e1efa41704b6a5d9acaa826af · ms:1169
+- 2026-09-04 · 09ec963* · exit 0 · `set -o pipefail …` · acceptance-sha256:00cb57f096fe7a1c094c872b2164a45444daa96e1efa41704b6a5d9acaa826af · ms:1205
