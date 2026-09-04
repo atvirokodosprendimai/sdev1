@@ -295,6 +295,38 @@ recorded in an existing stripe's header in place. The header is what makes that
 stripe readable; a converter that edits it before the fragments beneath it have
 actually changed produces a stripe that describes something that does not exist.
 
+### §15 — Nothing decides when the live tail is sealed, or how an index over it is published
+
+**Source:** ADR-017 (`docs/adr/ADR-017-lock-free-read-path.md`), Out of Scope; and
+both its task files.
+
+ADR-017 makes the live tail readable without locks and ADR-005 makes a sealed
+segment immutable. Neither says how one becomes the other, and two open
+questions sit in that gap.
+
+**When sealing happens.** A size threshold, an age, a transaction count, or an
+operator's instruction — each gives a different tail length, and the tail's
+length is what a reader walks. Sealing too rarely makes reads linear in ingest
+rate; too often makes tiny segments and pays ADR-006's per-stripe overhead on
+almost nothing. It also interacts with ADR-004's tiers: sealing is the moment a
+leaf's data moves from a replicated policy to a coded one, so it is a durability
+transition and not only a layout one.
+
+**How an index over the tail is published.** Walking a tail to find one subject
+is linear, so an index is wanted — and ADR-017's rule constrains what kind. A
+structure that must be rebalanced IN PLACE to be read cannot be published
+atomically and therefore cannot go on this read path. The rule was written down
+first precisely so this question is answered before something is built that
+cannot satisfy it. Whatever closes this must show its index being published by a
+single atomic store, or argue explicitly for changing the rule.
+
+⚠ The trap in sealing is that it is TWO publications, not one: the segment
+becomes readable and the tail entries it replaces become redundant. A reader
+holding a snapshot taken before the seal must still see a consistent view, which
+means the tail's entries cannot be dropped the moment the segment appears. The
+safe shape is that both are reachable until no snapshot predates the swap — and
+that is a reclamation question ADR-017 deliberately did not open.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
