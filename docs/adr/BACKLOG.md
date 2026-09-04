@@ -604,6 +604,84 @@ same node. Spreading instead would raise latency for everyone. Neither is
 obviously right, and the answer probably depends on whether the cluster is closer
 to its bandwidth ceiling (§22) or to its latency target.
 
+### §25 — Nothing serves the agent surface, rate-limits it, or reports what it did
+
+**Source:** ADR-013 (`docs/adr/ADR-013-agent-tool-surface.md`), Out of Scope; and
+`ADR-013-agent-tool-surface/tasks/T2-serve-over-mcp.md`.
+
+ADR-013 decides what an agent may ask and what the asking MEANS. Everything
+between that and an agent actually getting an answer is open.
+
+**The server.** `github.com/modelcontextprotocol/go-sdk` is not a dependency yet,
+deliberately: nothing in the implemented half imports it, which is what lets the
+meaning of the surface be proved with no transport at all. Adding it is T2's first
+step, and the version must be pinned exactly — ⚠ a protocol SDK on a floating
+version changes the wire shape between builds, and the symptom is a client that
+lists no tools with nothing logged anywhere.
+
+**Serving results at all.** The server cannot answer until a statement can be
+evaluated (§20, itself on a storage engine, §12). ⚠ There is no honest partial
+step here. A server returning plausible rows from a stub is a worse artifact than
+no server, because neither a caller nor a test can tell the difference.
+
+**Rate limiting.** An agent is a new kind of caller: it can issue a read per token
+it generates, and it does not get tired. ADR-015's read budget already exists and
+already sheds, so the open question is not a new mechanism but which budget an
+agent's calls count against — ⚠ if they are excluded as "not user traffic", a
+model in a loop saturates the link while the node sheds the queries people are
+waiting on.
+
+**Observability.** ADR-012's vocabulary is CLOSED, so a per-call event needs its
+kind declared there first, with its reader named and the operator question it
+settles. The question worth answering is which tool an agent called and what it
+was refused for — a refusal an operator cannot see is a loop nobody can diagnose.
+
+**And the thing that has to be measured rather than reasoned about.** Rule 7 of
+ADR-013 says a tool's description is the only documentation its caller will ever
+have, and every refusal is written into it on that basis. Whether a model actually
+calls these tools correctly from those descriptions alone is unknown, and the
+failure mode is a caller that never reports being confused — it just calls the
+wrong thing, or gives up. That needs a real model against a real corpus, and until
+it exists the description rules are a reasoned guess.
+
+### §26 — Nothing mounts the projection, lists an entity, or serves a byte of it
+
+**Source:** ADR-014 (`docs/adr/ADR-014-filesystem-projection.md`), Out of Scope;
+and `ADR-014-filesystem-projection/tasks/T2-mount.md`.
+
+ADR-014 decides what a path MEANS, what it refuses, and what `stat` says about
+time. Three things stand between that and a working mount.
+
+**A FUSE library.** None is chosen. ⚠ This is not a dependency bump: the library's
+supported platforms become the mount's supported platforms, and that belongs in
+the record for whoever chooses. The binding also has to be checked against rule 3
+— several report a read-only filesystem at the WRITE callback by default, which
+would undo "refused at open" without changing a line of the grammar, and the
+symptom is a program that buffers happily and loses its data at `close(2)`.
+
+**Enumeration, which the language does not have.** The query language reads a
+NAMED entity; it cannot list them. So `/e` has no query behind it and the root
+directory is not implementable. ⚠ A mount that answered by inventing entries would
+be indistinguishable from a real listing to every caller — including a backup that
+would then record the invention as truth. Enumeration is §20's to add, and it is a
+real language decision rather than a gap: an unbounded listing over a planetary
+key space is not a thing a directory read can return.
+
+**Serving bytes at all**, which needs the evaluator (§20) and a storage engine
+(§12).
+
+**And the measurement rule 4 rests on.** ADR-014 says `mtime` is the datom's
+transaction time so that incremental tools work. That is reasoned, not observed.
+The check is two `rsync -n` passes with no writes between them, confirming the
+second copies nothing — the failure it guards against is invisible except at
+scale, where it makes every backup a full one.
+
+**One thing already decided and worth not re-opening:** an entity whose name
+begins with a dot is an ORDINARY entity. Nothing under `/e` is interpreted, which
+is what makes a control file impossible there — and refusing such a name would
+make that entity unreachable through the mount, which is a worse failure than a
+name `ls` hides by convention.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
