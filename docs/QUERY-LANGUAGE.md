@@ -598,8 +598,9 @@ with a reason, and none is a gap someone forgot.
 | More than one entity per `SELECT` | The entity is the transaction boundary. A cross-entity read is a read over a snapshot, and what a snapshot spans is a decision the storage engine has to make first. |
 | Joins | Same reason, one step further out. |
 | Enumerating entities | The language reads a **named** entity. An unbounded listing over a planetary key space is not something a single result can return, so the shape of that answer is a real decision rather than a missing keyword. |
-| Ordering or limiting results | There is no result set to order yet. Deciding `ORDER BY` before an evaluator exists would be guessing at its cost model. |
-| Aggregation — `COUNT`, `SUM` | Same. |
+| Ordering or limiting a `SELECT` | There is nothing to order by. A `SELECT` reads one named entity, so its result has no ranking, and `ORDER BY` before an evaluator exists would be guessing at a cost model. ⚠ADR-021 lifts this for `SEARCH`, where ranking exists and an unranked, unlimited search is a full scan with extra steps. The statement itself is `pending` — `BACKLOG.md` §27. |
+| Aggregation — `COUNT`, `SUM` | Not in the language. ⚠The one counting a caller can ask for is a FACET over a search result, decided in ADR-021: exact or refused, never estimated. Also `pending` on §27. |
+| Full-text search | Decided in ADR-021 and not yet in the grammar. ⚠The posting model is deliberately settled first, because an ordinary inverted index stores extracted plaintext and would silently undo crypto-shredding — and that cannot be retrofitted, since every posting already written would already be in the clear. |
 | Writes — `ASSERT` / `RETRACT` | Nothing evaluates yet, so a write statement would be syntax with no semantics. |
 | `UPDATE` or `DELETE`, ever | The store appends. A retraction is an assertion, and erasure is the destruction of a key. A verb implying in-place mutation would describe a data model this system does not have. |
 | Quoting a keyword as an identifier | No quoting mechanism exists, so the fourteen keywords are unreachable as attribute names. A real limitation, recorded rather than hidden. |

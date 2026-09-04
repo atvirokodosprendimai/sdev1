@@ -28,23 +28,24 @@ happened to do.
 
 ## Status of the corpus
 
-**Twenty records, all Accepted, and every one of them has code.** Their
+**Twenty-one records, all Accepted, and every one of them has code.** Their
 `Governs:` paths resolve, every task marked `done` carries tool-written
 acceptance and mutation evidence, and the packages they name exist and pass under
 the race detector.
 
-That is not the same as finished. Three records carry a second task that is
-`pending` on something nobody has built yet: ADR-013's MCP server and ADR-014's
-mount both wait on the query evaluator (`BACKLOG.md` §20, itself waiting on a
-storage engine, §12), and ADR-019's composed cluster waits on a node binary. Each
-says so in its own `Status` line and in its task index, rather than implying
-otherwise.
+That is not the same as finished. Four records carry a second task that is
+`pending` on something nobody has built yet: ADR-013's MCP server, ADR-014's
+mount and ADR-021's search index all wait on the query evaluator (`BACKLOG.md`
+§20, itself waiting on a storage engine, §12), and ADR-019's composed cluster
+waits on a node binary. Each says so in its own `Status` line and in its task
+index, rather than implying otherwise.
 
 ⚠ **The split is the point, not an apology.** A decision can be settled before the
 machinery it governs exists, and the settled half is testable today: ADR-013's
-rule that every agent tool compiles to a query, and ADR-014's rule that a
-filesystem path IS a query, are both proved by mutation with no storage engine
-anywhere. What waits is delivery, not meaning.
+rule that every agent tool compiles to a query, ADR-014's rule that a filesystem
+path IS a query, and ADR-021's rule that a search posting is sealed with the
+subject's own key — so that erasure reaches the index — are all proved by mutation
+with no storage engine anywhere. What waits is delivery, not meaning.
 
 Several further records name deferred work in `BACKLOG.md` while holding no
 pending task. A record whose tasks are all `done` can still be waiting on a
@@ -82,6 +83,7 @@ exists, because the choice is encoded in the data itself.
 | [ADR-018](ADR-018-read-ahead.md) | Read-ahead is a budgeted hint that fetches the nearest `k` and hedges only on a straggler | **Accepted** (the plan is done; fetching and caching are `BACKLOG.md` §18/§24) | Determines what a sequential read of a large blob costs the cluster. Reading one block of a coded stripe otherwise means `k` fragment fetches across `k` failure domains, so a naive projection turns streaming into per-block fan-out. Three things make it a decision rather than a cache: a prefetch is a HINT and correctness never depends on it; it is BUDGETED, because "load every part into memory" is right for a 40MB blob and fatal for a 4TB one; and it fetches the nearest `k` rather than all `k+m`, hedging to further fragments only on a straggler — fetching every fragment wastes `m/k` of the bandwidth on every healthy read. It is admission-controlled by ADR-015, because one open otherwise amplifies into load on every server holding the blob. |
 | [ADR-019](ADR-019-chaos-and-the-failure-catalogue.md) | Inject faults from a seed, and keep a written catalogue of every failure that does not recover | **Accepted** (T1 done, T2 pending) | Every record here states how its mechanism fails and recovers, and until now none had been broken on purpose to find out. `FAILURES.md` is the deliverable: what this system does NOT survive, which is the half an operator needs and the half nobody writes down. Three dispositions and no fourth, because a fourth is how "we are looking into it" enters a catalogue and stops anything being countable — and "unrecoverable by design" is a correct answer, since losing more fragments than a stripe has parity destroys the block and a system that returned something anyway would be inventing. Every schedule is a pure function of one seed, because an unreproducible failure is a report rather than a bug. ⚠The composed-cluster half is `pending` on a node binary, and its hardest requirement is that the 8GB test budget must not MANUFACTURE findings: a container the kernel's out-of-memory killer stops looks exactly like the node crash being injected. |
 | [ADR-020](ADR-020-commit-point.md) | A write commits when N memory replicas hold it, and the watermark is that commit point | **Accepted** (condition and gate done; replication is `BACKLOG.md` §18) | Decides what a copy must have DONE before a write is acknowledged, which ADR-004 left open when it decided how many copies exist. Replicating into memory on several nodes and flushing to disk afterwards is fast and is genuine durability against a process crash, a panic or an out-of-memory kill. ⚠It is NOT durability against CORRELATED loss: two nodes on one power feed losing it together lose everything unflushed, and nothing reports it — so the memory replicas must be required to sit in distinct power domains rather than merely permitted to, which ADR-004's `DomainLevel` already expresses. Atomicity for readers needs no new mechanism: ADR-017's watermark already makes an in-flight block unreachable rather than half-visible, so advancing it once N replicas hold the entry makes it the commit point rather than a second mechanism beside it. ⚠Replication and flushing are DIFFERENT granularities — per transaction and per block — and conflating them holds a whole block's worth of writes unacknowledged and spikes latency at every boundary. |
+| [ADR-021](ADR-021-search-and-facets.md) | Search is a derived index inside the erasure boundary, and a facet is an exact count that refuses rather than estimates | **Accepted** (the posting and facet model is done; the index is `BACKLOG.md` §27/§20) | Everything else here requires already knowing what you are looking for — `SELECT` reads a NAMED entity and `MATCH SHAPE` needs a subject to resemble. ⚠**An ordinary inverted index silently undoes crypto-shredding, and that single fact shapes the whole design.** ADR-007 works because destroying a subject's key leaves ciphertext that nothing can read — an argument that holds only while nothing READABLE sits beside it. An index is extracted plaintext: shred the key and the segments go dark while the index still answers `term → subject-42`, turning the fastest structure in the system into a lookup for the person somebody asked to erase. It cannot be retrofitted, because every posting already written would already be plaintext. So a posting is sealed with the SUBJECT's own key, and erasure reaches the index by exactly the argument that reaches a coded stripe. ⚠An undecryptable posting is ABSENT, never an error and never a withheld count — "3 results hidden" is the same oracle wearing a different hat, and `withheld++` is what a developer writes when a decrypt fails in a loop. The index is DERIVED and the log wins: a result is a candidate confirmed against the datoms, because an index fed by subscription is always behind. ⚠A facet is EXACT or REFUSED, since an unlabelled estimate is a lie and a facet count is precisely the number people reconcile against a total. Amends ADR-011: ranking and limiting stay omitted for `SELECT` and are lifted only for `SEARCH`, where an unranked unlimited search is a full scan with extra steps. |
 
 Every record above is `Accepted` and governs the paths it names. A `Status` line
 in parentheses says which half of a record is built and which is waiting, and on

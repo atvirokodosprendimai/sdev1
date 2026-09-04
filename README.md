@@ -338,6 +338,55 @@ programs already speak.
 
 ---
 
+## Search and faceting
+
+Everything above requires already knowing what you are looking for: `SELECT`
+reads a **named** entity, and `MATCH SHAPE` needs a subject to resemble. Search
+is how you ask without knowing, and faceting is how you ask what the matches look
+like in aggregate.
+
+One fact shapes the entire design.
+
+⚠ **An ordinary inverted index silently undoes crypto-shredding.** Erasure works
+because destroying a subject's key leaves ciphertext that nothing can read — an
+argument that holds *only* while nothing readable sits beside it. An index is
+extracted plaintext. Shred the key and the segments go dark while the index still
+answers `term → subject-42`, which turns the fastest structure in the system into
+a lookup for the person somebody asked to erase. And it cannot be fixed later:
+every posting already written would already be in the clear, in every replica and
+every backup of the index.
+
+So **a posting is sealed with the subject's own key.** Shredding makes it
+undecryptable everywhere at once — live index, replicas, backups — without
+anything having to go and find them. Erasure reaches the index by exactly the
+argument that makes it reach a coded stripe.
+
+- ⚠ **A posting that does not decrypt is *absent*** — never an error, and never a
+  withheld count. "3 results hidden" is the same existence oracle wearing a
+  different hat, and `withheld++` is what anyone writes when a decrypt fails
+  inside a loop. The function that filters them returns no second value, so it
+  structurally cannot report one.
+- **Deleting a shredded subject's postings is not the answer**, though it looks
+  sufficient — it reintroduces a deletion that must find and visit every copy,
+  and an offline replica keeps its own.
+- **The index is derived and the log wins.** A result is a *candidate*, confirmed
+  against the datoms before it is returned; an index fed by subscription is
+  always behind. It is rebuildable from the log, so losing it is a performance
+  event rather than a data-loss event.
+- **Postings carry the transaction range they held over**, so search inherits the
+  time clause. The price is that postings accumulate with history, not with data.
+- ⚠ **A facet is exact or refused.** An unlabelled estimate is a lie, and a facet
+  count is precisely the number people reconcile against a total. Over its
+  declared bound it returns a named refusal and no partial counts.
+
+The posting and facet model is built and proved against the real keystore. The
+index itself, the ranking function and the `SEARCH` grammar are `BACKLOG.md` §27.
+
+⚠ One limit is stated rather than solved: a sufficiently **rare term** is still
+disclosive. This confines the leak from the subject to the term — a dictionary is
+shared, and a rare enough term approximates an identifier. That is why
+high-cardinality identifiers should not be indexed.
+
 ## How it fails, and how it recovers
 
 ![Three dispositions: recovers, unrecoverable by design, unrecoverable and open](docs/diagrams/failure-and-recovery.svg)

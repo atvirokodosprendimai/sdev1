@@ -682,6 +682,53 @@ is what makes a control file impossible there — and refusing such a name would
 make that entity unreachable through the mount, which is a worse failure than a
 name `ls` hides by convention.
 
+### §27 — Nothing builds a search index, ranks a result, or decides what is indexed
+
+**Source:** ADR-021 (`docs/adr/ADR-021-search-and-facets.md`), Out of Scope; and
+`ADR-021-search-and-facets/tasks/T2-index-and-grammar.md`.
+
+ADR-021 settles what a posting IS and what a facet may answer. Everything that
+turns that into a working search is open.
+
+**The index itself.** A read model over the datom log, fed by ADR-010's
+subscription. It needs the storage engine (§12) before there is a log to project.
+⚠ The constraint that must survive: a full rebuild from the log must reproduce it
+exactly. That property is what makes losing the index a performance event rather
+than a data-loss event, and it is worth nothing unproven.
+
+**Confirming candidates against the datoms** (§20). ⚠ This is the rule that
+decays quietest, because skipping it makes every search faster and the damage
+appears only on data that changed since the index saw it. An index fed by
+subscription is always behind.
+
+**Ranking.** Cannot be chosen without a corpus to choose it against, and the
+choice must record which corpus and on what date. ⚠ It also interacts with
+ADR-021's central cost: every candidate costs a decrypt, so a ranker that needs
+to score thousands of them may be unaffordable at that price. Measure the decrypt
+cost first.
+
+**The `SEARCH` grammar.** `SEARCH … IN … FACET BY … LIMIT …` with a time clause.
+⚠ It amends ADR-011, which listed ordering and limiting as deliberate omissions —
+they stand for `SELECT` and are lifted only here, where ranking exists. When it
+lands it must appear in `docs/QUERY-LANGUAGE.md`, and the documentation-coverage
+gate will fail until it does.
+
+**Analysis: stemming, stop words, language detection.** The analyzer is
+deliberately the simplest testable thing — lower-case and split. Anything more
+bakes in a language, and choosing one without a corpus is a preference.
+
+**Which attributes are indexed, and who decides.** ⚠ This is where the residual
+disclosure lives. ADR-021 confines the leak from the SUBJECT to the TERM, and
+does not remove it: a dictionary is shared, and a sufficiently rare term
+approximates an identifier. Not indexing high-cardinality identifiers is advice
+today; it should become a rule with a named owner, because "do not index the
+sensitive fields" as a policy fails silently and is discovered when the wrong
+thing turns up in an index.
+
+**And the cost nobody has measured.** A sealed posting cannot be scanned as
+cheaply as a plaintext one. That is the price of erasure reaching the index, it
+is accepted deliberately, and it is entirely unquantified.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.

@@ -60,6 +60,7 @@ unimplementable.
 | **§25** | Serve the agent surface over MCP, rate-limit it, and report what it did. Also needs the SDK dependency, pinned exactly |
 | **§26** | Mount the filesystem projection. Also needs a FUSE library — a portability decision, not a dependency bump — and enumeration from §20 |
 | **§8** | Test a real domain against the one-entity transaction boundary. Until something real is modelled against it, the boundary is reasoned rather than validated |
+| **§27** | Build the search index, rank results, and add the `SEARCH` grammar. ⚠A result must be confirmed against the datoms before it is returned — the rule that decays quietest, because skipping it makes every search faster and the damage shows only on data that changed |
 
 ---
 
