@@ -60,8 +60,12 @@ type Store struct {
 	// asserted twice.
 	mu       sync.RWMutex
 	segments []*segstore.Reader
-	tail     []ports.Datom
-	closed   bool
+	// segmentFiles are the file names of segments, positionally matching
+	// segments. ⚠ Kept only so a compaction can REMOVE the inputs it merged —
+	// nothing reads a name to decide anything, which is rule 2's whole point.
+	segmentFiles []string
+	tail         []ports.Datom
+	closed       bool
 }
 
 // compile-time proof that a leaf is exactly what a read model may be handed.
@@ -93,6 +97,7 @@ func Open(dir string, leaf addr.LeafID) (*Store, error) {
 			return nil, fmt.Errorf("leafstore: opening segment %s: %w", name, err)
 		}
 		s.segments = append(s.segments, r)
+		s.segmentFiles = append(s.segmentFiles, name)
 	}
 	return s, nil
 }
@@ -172,6 +177,7 @@ func (s *Store) Seal(_ context.Context) error {
 		return fmt.Errorf("leafstore: reopening the segment just sealed: %w", err)
 	}
 	s.segments = append(s.segments, r)
+	s.segmentFiles = append(s.segmentFiles, name)
 	s.tail = nil
 	return nil
 }
@@ -219,7 +225,7 @@ func (s *Store) historyLocked(entity string) ([]ports.Datom, error) {
 			// case, because most segments hold most entities not at all. Every
 			// other error propagates — a refusal swallowed in a loop is how a real
 			// read failure becomes an empty answer.
-			if errors.Is(err, segstore.ErrNoSuchBlock) {
+			if isMissingBlock(err) {
 				continue
 			}
 			return nil, fmt.Errorf("leafstore: reading %q: %w", entity, err)
@@ -236,8 +242,30 @@ func (s *Store) historyLocked(entity string) ([]ports.Datom, error) {
 		}
 	}
 
-	sort.SliceStable(out, func(i, j int) bool { return out[i].TxID.Compare(out[j].TxID) < 0 })
-	return out, nil
+	sortByTransaction(out)
+	// ⚠ A datom can legitimately appear in more than one segment: a compaction
+	// publishes its output before removing its inputs, and a crash between the two
+	// leaves the overlap on disk permanently. Without this every later read of
+	// that leaf would count each datom twice. See ADR-029.
+	return deduplicate(out), nil
+}
+
+// isMissingBlock reports the one error a leaf translates rather than propagates.
+//
+// ⚠ At the block layer a missing key is exceptional and rightly named; here it is
+// the common case, because most segments hold most entities not at all. Every
+// other error must come out — a refusal swallowed in a loop is how a real read
+// failure becomes an empty answer.
+func isMissingBlock(err error) bool { return errors.Is(err, segstore.ErrNoSuchBlock) }
+
+// sortByTransaction orders datoms by their own identifiers.
+//
+// ⚠ By transaction, NEVER by the order segments were opened. That order is a
+// property of the filenames, and the filenames mean nothing on purpose.
+func sortByTransaction(datoms []ports.Datom) {
+	sort.SliceStable(datoms, func(i, j int) bool {
+		return datoms[i].TxID.Compare(datoms[j].TxID) < 0
+	})
 }
 
 // Load returns the datoms of one entity visible at a snapshot.
@@ -305,7 +333,10 @@ func (s *Store) Entities() ([]string, error) {
 	if s.closed {
 		return nil, ErrClosed
 	}
+	return s.entitiesLocked()
+}
 
+func (s *Store) entitiesLocked() ([]string, error) {
 	seen := make(map[string]struct{})
 	for _, seg := range s.segments {
 		keys, err := seg.Keys()
@@ -362,6 +393,7 @@ func (s *Store) Close() error {
 		}
 	}
 	s.segments = nil
+	s.segmentFiles = nil
 	s.tail = nil
 	return first
 }

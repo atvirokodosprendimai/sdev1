@@ -41,6 +41,14 @@ type Policy struct {
 	// and durability beats layout: a small segment costs space, an unbounded
 	// exposure costs data.
 	MaxAge time.Duration
+
+	// MaxSegments compacts once the leaf holds at least this many segments. Zero
+	// disables compaction.
+	//
+	// ★ A COUNT rather than a size, because the cost being paid is one block
+	// lookup per segment per read — and that is counted in segments however large
+	// each one is. See [Store.ShouldCompact] and ADR-029.
+	MaxSegments int
 }
 
 // Valid reports whether a policy would ever seal.

@@ -83,7 +83,7 @@ What genuinely remains under this number, each blocked on something real:
 
 | | |
 |---|---|
-| **§15** | Partly done — ADR-028 decides WHEN a tail seals (size or age, first to trip) and measures what is exposed. ⚠What remains is COMPACTION, which is now the largest cost in the system: a read touches every segment in a leaf. An index over a leaf, and who calls `ShouldSeal`, are also still open |
+| **§15** | ✅ mostly done — ADR-028 decides when a tail seals (size or age, first to trip) and ADR-029 merges segments so a read stops costing one block lookup per seal. ⚠What remains: TIERING (merging everything into one is quadratic over a leaf's lifetime), reclaiming orphaned inputs after an interrupted compaction, an index over a leaf, and who calls `ShouldSeal`/`ShouldCompact` |
 | **§13** | Whether one compression block may mix subjects — compressing before encrypting leaks through size, so this is a confidentiality decision wearing a performance costume |
 | **§17** | The keystore has no home, no rotation and no caching story. ⚠ A backup holding it beside the data silently undoes every erasure |
 | **§23** | ✅ done — ADR-028. The seal trigger IS the flush bound, so a size bound and an age bound decide it together, and `leafstore.Exposure` reports the OLDEST unsealed datom rather than a mean. ⚠An average is smallest when the tail is fullest, so it looks best exactly when the risk is highest |
