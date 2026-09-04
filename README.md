@@ -116,16 +116,16 @@ Read this before anything else on the page.
 
 **The decisions are made and recorded. Much of the machinery that would execute
 them is not built.** Twenty-four decision records are Accepted, each governs real
-Go code, and 29 of 30 packages pass under the race detector. Data can now outlive a
+Go code, and 30 of 31 packages pass under the race detector. Data can now outlive a
 process — but there is still no network transport and no query evaluator, so
 **you cannot yet start a server and store a fact through it.**
 
 | | |
 |---|---|
-| **Runs today** | 30 Go packages, 308 tests, race-clean — 29 packages carry tests and the thirtieth, `cmd/sdev1-ql`, is proved by its record's fence running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
+| **Runs today** | 31 Go packages, 318 tests, race-clean — 30 packages carry tests and the thirty-first, `cmd/sdev1-ql`, is proved by its record's fence running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
 | **Exists now** | A segment store: blocks written to a file under a temporary name, published by rename, found again by key through a verified index and a memory mapping. |
 | **Does not exist** | A transport, a query evaluator, a node binary, a running cluster, and the wiring from the session to the segment store. |
-| **Honestly measured** | 188 mutants killed across the corpus, 11 recorded as *survived* — those rows are kept rather than deleted, because a mutant that lived is the record of what the suite could not see. |
+| **Honestly measured** | 193 mutants killed across the corpus, 11 recorded as *survived* — those rows are kept rather than deleted, because a mutant that lived is the record of what the suite could not see. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are
@@ -733,7 +733,7 @@ cmd/sdev1-addr/           the one binary: where an entity lives, and why
 docs/
   QUERY-LANGUAGE.md       the language, its grammar, and a tutorial
   diagrams/               the schematics on this page
-    adr/                    the decision corpus — twenty-four Accepted records
+    adr/                    the decision corpus — twenty-five Accepted records
     README.md             the index; says which half of each record is built
     FAILURES.md           the catalogue of what this does NOT survive
     BACKLOG.md            every deferred item, with a pointer back
@@ -741,7 +741,7 @@ internal/core/
   addr topology placement       the address space and where copies go
   hlc tx temporal               time: clock, identity, the two axes
   command ql                    the write path's reads, and the language
-  segment segstore              the byte format, and a run of blocks as one file
+  segment datom segstore        a block, a fact inside one, and a file of blocks
   erasure crypt                 coding, and the erasure of a subject
   tail commit lease             the live tail, the commit point, fenced ownership
   routing prefetch admit        finding a leaf, reading ahead, shedding load
