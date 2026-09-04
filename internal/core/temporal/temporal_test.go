@@ -183,7 +183,41 @@ func TestIntervalIsHalfOpen(t *testing.T) {
 // concepts. It is kept anyway — the defect it guards shipped in a sibling
 // project past roughly 140 green tests, and a coarse guard that fires is worth
 // more than an elegant one that does not exist.
+// sanctionedSites are packages that legitimately NAME both axes without
+// comparing them, each paired with the check that carries the guarantee there
+// instead.
+//
+// ⚠ Added 2026-09-04 for ADR-011. The query language necessarily names both
+// axes — `AS OF` and `TRANSACTION` ARE the two axes — so it is not the
+// "unrelated file" this guard's comment anticipates. It is the HIGHEST-risk
+// site, because a language surface is exactly where a caller would pass one
+// instant into both.
+//
+// ★ So the exemption is conditional on its substitute EXISTING. If that check is
+// deleted or renamed, this guard fires again rather than leaving a hole nobody
+// can see. An unconditional exemption would be the hole.
+var sanctionedSites = map[string]struct{ substitute, file string }{
+	"internal/core/ql/": {
+		substitute: "TestPackageComputesNoDefaultsOfItsOwn",
+		file:       filepath.Join("..", "..", "..", "internal", "core", "ql", "temporal_test.go"),
+	},
+}
+
 func TestVisibleIsTheOnlyComparisonSite(t *testing.T) {
+	// Every exemption must be paid for by a check that actually exists.
+	for prefix, site := range sanctionedSites {
+		b, err := os.ReadFile(site.file)
+		if err != nil {
+			t.Fatalf("%s is exempt from this guard on the strength of %s, and %s cannot be read: %v",
+				prefix, site.substitute, site.file, err)
+		}
+		if !strings.Contains(string(b), "func "+site.substitute+"(") {
+			t.Fatalf("%s is exempt from this guard on the strength of %s, which no longer exists "+
+				"in %s — the exemption was paid for by a check that is gone, so the guarantee is "+
+				"now held by nothing", prefix, site.substitute, site.file)
+		}
+	}
+
 	root := filepath.Join("..", "..", "..", "internal")
 	var offenders []string
 
@@ -194,8 +228,14 @@ func TestVisibleIsTheOnlyComparisonSite(t *testing.T) {
 		if d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		if strings.Contains(filepath.ToSlash(path), "internal/core/temporal/") {
+		slashed := filepath.ToSlash(path)
+		if strings.Contains(slashed, "internal/core/temporal/") {
 			return nil // this package is the sanctioned site
+		}
+		for prefix := range sanctionedSites {
+			if strings.Contains(slashed, prefix) {
+				return nil
+			}
 		}
 		b, err := os.ReadFile(path)
 		if err != nil {

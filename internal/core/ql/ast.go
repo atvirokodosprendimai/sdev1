@@ -1,0 +1,60 @@
+package ql
+
+import (
+	"github.com/atvirokodosprendimai/sdev1/internal/core/temporal"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
+)
+
+// Statement is anything the language can express.
+type Statement interface{ statement() }
+
+// Select reads attributes of an entity, optionally filtered and optionally
+// qualified in time.
+type Select struct {
+	// Attributes is the projection; empty means every attribute.
+	Attributes []string
+	// Entity names what is being read.
+	Entity string
+	// Where is the optional filter.
+	Where *Predicate
+	// Time is the qualifier as WRITTEN, before defaults.
+	Time TimeClause
+}
+
+func (*Select) statement() {}
+
+// Predicate is one comparison.
+type Predicate struct {
+	Attribute string
+	Op        string
+	Value     string
+	// ValueIsNumber records whether the literal was written as a number, so a
+	// later evaluator does not have to guess.
+	ValueIsNumber bool
+}
+
+// TimeClause holds the time qualifiers exactly as the caller wrote them, before
+// any default is applied.
+//
+// ⚠ Keeping "as written" separate from "resolved" is what makes the defaults
+// checkable. A clause that applied defaults during parsing would leave nothing
+// to compare against ADR-002's table.
+type TimeClause struct {
+	// ValidAt is the instant from `AS OF t`, or nil.
+	ValidAt *int64
+	// AsOf is the transaction from `TRANSACTION u`, or nil.
+	AsOf *tx.TxID
+}
+
+// Resolve applies the defaults and returns the query the storage layer takes.
+//
+// ★ It calls [temporal.ResolveQualifiers] and decides nothing itself. The
+// defaults table has exactly ONE implementation, in the package that owns what
+// time means — two would drift, and the drift is invisible until a query returns
+// the wrong history.
+//
+// ⚠ This function contains no branch, deliberately. A four-row table cannot be
+// implemented without one, so its absence is the property a guard can check.
+func (c TimeClause) Resolve(now int64) temporal.Query {
+	return temporal.ResolveQualifiers(temporal.Query{AsOf: c.AsOf, ValidAt: c.ValidAt}, now)
+}

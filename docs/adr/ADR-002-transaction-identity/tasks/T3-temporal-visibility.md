@@ -58,7 +58,7 @@ go test ./internal/core/temporal/... -run 'TestLoneInstant|TestBackdated|TestTra
 | `TestDefaultsTableIsExhaustive` | `internal/core/temporal/temporal_test.go` | All four combinations of supplied/omitted qualifiers resolve, and each matches ADR-002 rule 6's row | — | S3, S4 |
 | `TestVisibleRejectsOnEitherAxisIndependently` | `internal/core/temporal/temporal_test.go` | A datom failing only the business axis and one failing only the transaction axis are both excluded — proving neither condition is derived from the other | — | S5 |
 | `TestIntervalIsHalfOpen` | `internal/core/temporal/temporal_test.go` | A datom whose interval ends exactly at `ValidAt` is excluded, and one whose interval starts exactly there is included — adjacent intervals neither overlap nor gap | — | S2 |
-| `TestVisibleIsTheOnlyComparisonSite` | `internal/core/temporal/temporal_test.go` | A source scan asserts no other file in `internal/` compares both a validity bound and a `TxID` — the structural guard that keeps the comparison concentrated | — | S5 |
+| `TestVisibleIsTheOnlyComparisonSite` | `internal/core/temporal/temporal_test.go` | A source scan asserts no other file in `internal/` compares both a validity bound and a `TxID` — the structural guard that keeps the comparison concentrated. ⚠Amended 2026-09-04 for ADR-011: it now carries a `sanctionedSites` allowlist, and each entry is CONDITIONAL on the substitute check that replaces it still existing | — | S5 |
 
 ## Reachability
 
@@ -91,6 +91,7 @@ go test ./internal/core/temporal/... -run 'TestLoneInstant|TestBackdated|TestTra
 ## Risks
 
 - `TestVisibleIsTheOnlyComparisonSite` is a source-scanning test, which is coarse and can produce a false positive on an unrelated file that happens to mention both concepts. It is kept anyway: the defect it guards shipped in a sibling project past ~140 green tests, and a coarse guard that fires is worth more than an elegant one that does not exist.
+- ⚠ **Amended 2026-09-04, when ADR-011 tripped it.** The query language necessarily NAMES both axes — `AS OF` and `TRANSACTION` *are* the two axes — so it is not the "unrelated file" the coarseness note anticipated. It is the highest-RISK site, because a language surface is exactly where a caller would pass one instant into both. The guard now carries a `sanctionedSites` allowlist pairing each exempt package with the check that holds the guarantee there instead (`ql.TestPackageComputesNoDefaultsOfItsOwn`, which asserts `Resolve` forwards and branches on nothing). ★The exemption is CONDITIONAL: the guard reads the substitute's source and fails if it has been deleted or renamed, so an exemption can never outlive the check that paid for it. An unconditional allowlist would have been the hole this guard exists to prevent.
 - The defaults table is duplicated between ADR-002 rule 6 and `qualifiers.go`. `TestDefaultsTableIsExhaustive` asserts the code's shape but cannot read the record, so the two can still drift. Reviewing them together is a Follow-up on the parent record rather than something a gate can close.
 
 ## Stop Condition
@@ -113,3 +114,4 @@ exactly two qualifiers, and a third makes the table incomplete rather than wrong
 - 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1210
 - 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1197
 - 2026-09-04 · a3ba183* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1188
+- 2026-09-04 · 4016ba8* · exit 0 · `set -o pipefail …` · acceptance-sha256:c07bd81e4762dd053804cedc309030524e44ab7e4d7b99dfb002e57449cc4e9d · ms:1427

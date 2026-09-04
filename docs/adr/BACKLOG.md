@@ -450,6 +450,36 @@ append. The whole value of an epoch is that the resource refuses correctly while
 knowing nothing about who is alive, and a consensus layer is exactly where
 somebody will be tempted to add a liveness check "for safety".
 
+### §20 — Nothing evaluates a query, plans one, or computes a similarity
+
+**Source:** ADR-011 (`docs/adr/ADR-011-query-language.md`), Out of Scope; and both
+its task files.
+
+ADR-011 decides what a caller may WRITE and what it MEANS. Running it is a
+different job and it waits on storage.
+
+**Evaluation.** A parsed statement has to become datom reads bounded by the
+resolved qualifiers. ⚠ Whatever does that must pass the parser's resolved
+qualifiers straight to `temporal.Visible` and re-derive nothing: re-deriving is
+exactly where the two time axes get conflated again, which is the defect ADR-002
+was written against and a predecessor project shipped.
+
+**Planning.** Which index to use, in what order to evaluate terms, and what a
+term costs. None of it can be decided before there is an index (§15) or a stored
+byte (§12), and guessing now would fix an execution strategy against a storage
+layer nobody has built.
+
+**Similarity.** ADR-011 requires a shape query to STATE its metric and threshold
+rather than defaulting them, which makes a query reproducible. It does not say
+what any particular metric computes, and that needs real data to be worth
+choosing — a metric picked against no corpus is a number nobody has reason to
+believe.
+
+**The graph operator past one hop.** ADR-011 fixes that a time clause may attach
+per leg, which is why time is a clause at all. A multi-hop traversal syntax is
+deferred, and whatever adds it must keep that property rather than quietly
+losing it in the recursion.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
