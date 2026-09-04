@@ -280,19 +280,14 @@ func (s *Store) Attributes(ctx context.Context, entity string, at ports.Snapshot
 		return nil, err
 	}
 
-	latest := make(map[string]ports.Datom, len(visible))
-	for _, d := range visible {
-		if prior, seen := latest[d.Attribute]; seen && d.TxID.Compare(prior.TxID) <= 0 {
-			continue
-		}
-		latest[d.Attribute] = d
-	}
-
-	out := make([]string, 0, len(latest))
-	for name, d := range latest {
-		if d.Assert {
-			out = append(out, name)
-		}
+	// ★ [ports.Carried] rather than a fourth copy of "latest per attribute,
+	// retractions suppressed" — the evaluator and search's confirmation need the
+	// same reduction, and a copy that dropped the retraction half would report an
+	// attribute the entity no longer has.
+	carried := ports.Carried(visible)
+	out := make([]string, 0, len(carried))
+	for name := range carried {
+		out = append(out, name)
 	}
 	sort.Strings(out)
 	return out, nil

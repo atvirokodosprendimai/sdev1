@@ -130,10 +130,10 @@ process — but there is still no network transport and no query evaluator, so
 
 | | |
 |---|---|
-| **Runs today** | 33 Go packages, 350 tests, race-clean — 32 packages carry tests and the thirty-third, `cmd/sdev1-ql`, is proved by its records' fences running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
+| **Runs today** | 33 Go packages, 354 tests, race-clean — 32 packages carry tests and the thirty-third, `cmd/sdev1-ql`, is proved by its records' fences running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
 | **Exists now** | A storage engine and an evaluator: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, and a `SELECT` that reads one entity out of it and filters. |
 | **Does not exist** | A transport, a query planner, a similarity metric, a node binary, a running cluster. |
-| **Honestly measured** | 223 mutants killed across the corpus, 14 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see, and three of these found claims that nothing was holding. |
+| **Honestly measured** | 235 mutants killed across the corpus, 16 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see, and five of these found claims that nothing was holding, one of them a real bug. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are

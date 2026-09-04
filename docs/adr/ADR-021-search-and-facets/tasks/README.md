@@ -25,12 +25,14 @@ Two tasks, sequential.
 | T1 | What a posting is, what a caller can see, and what a facet counts | done | — | `go test ./internal/core/search/... -race -run 'TestAShreddedSubject\|TestAnUndecryptablePosting\|TestVisibleReportsNoWithheld\|TestAnalyzeIsDeterministic\|TestFacetCountsAreExact\|TestAFacetOverItsBound\|TestASearchWithoutALimit\|TestPostingCarriesItsTransactionRange'` then the crypt suite |
 | T2 | The SEARCH statement, and quoted identifiers to pay for it | done | — | `go test ./internal/core/ql/... -race -run 'TestSearchRoundTrips\|TestSearchWithoutALimit\|TestSearchCarriesTheSameTimeClause\|TestQuotedIdentifier\|TestSearchFacetsAreOptional\|TestNewKeywordsAreReserved\|TestQueryLanguageDocIsComplete'` then the ql, search and temporal suites |
 | T3 | An index you can actually search, and a ranking that is the same everywhere | done | — | `go test ./internal/core/search/... -race -run 'TestIndexBuiltTwice\|TestRankingDoesNotDependOnMapOrder\|TestAShreddedSubjectIsAbsentFrom\|TestResultHonoursTheLimit\|TestRarerTermsScoreHigher\|TestAnEmptyQueryIsRefused'` then the search, crypt and ql suites |
-| T4 | Persist the index, and confirm what it returns | pending | — | `go test ./internal/core/search/... -race -run 'TestRebuildFromTheLogMatchesIncremental\|TestACandidateIsConfirmedAgainstTheDatoms'` |
+| T4 | Rebuild the index from the log, and confirm what it returns | done | — | `go test ./internal/core/search/... -race -run '…four tests…'` then the session, subscribe and tail suites |
 
 Status: `pending` | `partial` | `blocked` | `done`.
 
-⚠ **T4 is `pending` on two things**: a storage engine (`BACKLOG.md` §12) and a
-query evaluator (§20). Nothing else is.
+★ **All four tasks are done.** T4 was `pending` on a storage engine
+(`BACKLOG.md` §12, closed by ADR-024/025/026) and a query evaluator (§20, closed
+for `SELECT` by ADR-027). Both exist, so the index is now a projection of the log
+that can be rebuilt, and a candidate can be confirmed against the datoms.
 
 ⚠ **An earlier version of this record deferred the GRAMMAR and the INDEX into
 that same pending task, and it was wrong.** Parsing is parsing and an index is a
@@ -39,11 +41,14 @@ much further away than it was, and it is worth naming because the mistake is eas
 to repeat: "this waits on the storage engine" is true of persistence and rarely
 true of meaning.
 
-★ **So search WORKS today, in memory.** `SEARCH` parses, an index answers it,
-ranking is deterministic and rarity-weighted, and a shredded subject is absent
-from both the hits and the facet counts. What is missing is durability and
-candidate confirmation — so a result reflects what the index believes, which is
-not yet the same as what is true.
+⚠ **What is honestly still missing, and is NOT hidden by the `done`:**
+`search.Builder` and `search.Confirm` exist and are proven, and the session's
+`SEARCH` does not call them yet — it answers from the index it fed on the write
+path, unconfirmed. Wiring that needs the search path to carry a reader and a
+snapshot, which is the same work as moving `SEARCH` onto the reader (§20). The
+index is also not itself written to a disk: publishing one atomically is the same
+question as publishing an index over the tail (§15), and answering it here would
+answer it twice.
 
 ## Contract Coupling
 

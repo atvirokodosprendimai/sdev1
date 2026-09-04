@@ -218,19 +218,18 @@ func (s *Session) record(d ports.Datom) error {
 	// Index on the WRITE path, so a search finds facts that were asserted rather
 	// than facts something indexed separately.
 	//
-	// ⚠ A REFERENCE is not indexed as text. Its bytes are an entity name, not
-	// prose, and full-text matching them would answer "what links to this" with
-	// something that only looks like an answer — inbound edges are a different
-	// index and a deferred decision, not a side effect of the analyzer.
-	if d.Assert && !d.IsReference {
-		for _, term := range search.Analyze(string(d.Value)) {
-			posting := search.Posting{Subject: d.Entity, Term: term, From: d.TxID}
-			sealed, err := search.Seal(s.keys, posting)
-			if err != nil {
-				return fmt.Errorf("session: index the write: %w", err)
-			}
-			s.index.Add(term, sealed)
+	// ★ Which datoms produce terms is [search.TermsOf]'s decision, not this
+	// package's. A builder rebuilding the index from the log applies the same
+	// rule, and two copies of it would drift — at which point a rebuilt index
+	// would answer differently from the one it replaced, and "the index is
+	// rebuildable" would stop being true without anything failing.
+	for _, term := range search.TermsOf(d) {
+		posting := search.Posting{Subject: d.Entity, Term: term, From: d.TxID}
+		sealed, err := search.Seal(s.keys, posting)
+		if err != nil {
+			return fmt.Errorf("session: index the write: %w", err)
 		}
+		s.index.Add(term, sealed)
 	}
 	return nil
 }
@@ -292,18 +291,10 @@ func (m memoryReader) Attributes(ctx context.Context, entity string, at ports.Sn
 	if err != nil {
 		return nil, err
 	}
-	latest := make(map[string]ports.Datom, len(visible))
-	for _, d := range visible {
-		if prior, seen := latest[d.Attribute]; seen && d.TxID.Compare(prior.TxID) <= 0 {
-			continue
-		}
-		latest[d.Attribute] = d
-	}
-	out := make([]string, 0, len(latest))
-	for name, d := range latest {
-		if d.Assert {
-			out = append(out, name)
-		}
+	carried := ports.Carried(visible)
+	out := make([]string, 0, len(carried))
+	for name := range carried {
+		out = append(out, name)
 	}
 	sort.Strings(out)
 	return out, nil
