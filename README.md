@@ -78,15 +78,16 @@ Four things in that transcript are the whole design, working:
 Statements also come from a file (`--file`) or standard input. Add `--tenant N`
 to write into a different tenant's subtree.
 
-> ⚠ **This is an in-memory session, not a database.** Everything is lost when the
-> process exits — there is no storage engine yet. It exists so the decisions can
-> be *watched working* rather than only read about. See `internal/core/session`.
+> ⚠ **This session is in memory, not on a disk.** Everything it holds is lost when
+> the process exits. There IS a segment store now — `internal/core/segstore` writes
+> blocks to a file and finds them again — but nothing has wired the session onto it
+> yet (`BACKLOG.md` §28). See `internal/core/session`.
 
 ## What you can actually do today
 
-**Short version: you can parse any query, and run search and addressing in
-memory. You cannot store a fact or read one back, because there is no storage
-engine.**
+**Short version: you can parse any query, run search, addressing and an in-memory
+session, and write a segment to a disk and read a block back out of it. What is
+missing between those two halves is the wiring and a query evaluator.**
 
 | | Status | What that means |
 |---|---|---|
@@ -101,7 +102,8 @@ engine.**
 | Links — `ASSERT a orbits = ->b` | **parses + runs** | A value prefixed `->` is a reference, stored as a kind and never inferred from bytes. |
 | Taxonomies at a past instant — `TRAVERSE a DEPTH 2 AS OF t` | **parses + runs** | Free once links are datoms. ⚠ **Every hop resolves at one instant** — otherwise you get a tree that never existed. |
 | **Joins, `AND`/`OR`, `ORDER BY`, `COUNT`** | ❌ | See the query guide's boundary table for which are decisions and which are gaps. |
-| Storing anything on a disk | ❌ | No storage engine — the session is in memory and loses everything on exit. This is the blocker under almost everything else. |
+| Writing a segment to a disk, reading a block back | **runs** | `internal/core/segstore`. Published by atomic rename, so a half-written segment is not addressable rather than being guarded; index verified before any offset from it is followed; the file is read through a memory mapping. macOS and Linux. |
+| A fact you `ASSERT` surviving a restart | ❌ | The session is in memory and is not wired to the segment store yet. This is the blocker under most of what is left. |
 | Reading a stored fact back | ❌ | No query evaluator. |
 | A server, a cluster, a network | ❌ | No transport. Everything is in-process. |
 
@@ -112,17 +114,18 @@ engine.**
 
 Read this before anything else on the page.
 
-**The decisions are made and recorded. Most of the machinery that would execute
-them is not built.** Twenty decision records are Accepted, each governs real Go
-code, and 25 packages pass under the race detector. But there is no storage
-engine, no network transport, and no query evaluator — so **you cannot yet start
-a server and store a fact.**
+**The decisions are made and recorded. Much of the machinery that would execute
+them is not built.** Twenty-four decision records are Accepted, each governs real
+Go code, and 29 of 30 packages pass under the race detector. Data can now outlive a
+process — but there is still no network transport and no query evaluator, so
+**you cannot yet start a server and store a fact through it.**
 
 | | |
 |---|---|
-| **Runs today** | 25 Go packages, 247 tests, race-clean. One binary, `sdev1-addr`. Every decision record's mechanism is decidable and tested in isolation. |
-| **Does not exist** | A storage engine, a transport, a query evaluator, a node binary, a running cluster. |
-| **Honestly measured** | 129 mutants killed across the corpus, 6 recorded as *survived* — those rows are kept rather than deleted, because a mutant that lived is the record of what the suite could not see. |
+| **Runs today** | 30 Go packages, 308 tests, race-clean — 29 packages carry tests and the thirtieth, `cmd/sdev1-ql`, is proved by its record's fence running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
+| **Exists now** | A segment store: blocks written to a file under a temporary name, published by rename, found again by key through a verified index and a memory mapping. |
+| **Does not exist** | A transport, a query evaluator, a node binary, a running cluster, and the wiring from the session to the segment store. |
+| **Honestly measured** | 188 mutants killed across the corpus, 11 recorded as *survived* — those rows are kept rather than deleted, because a mutant that lived is the record of what the suite could not see. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are
@@ -301,6 +304,36 @@ header.
 
 The checksum is verified **before** the codec runs, and decoding takes no
 configuration — it reads what the header says.
+### A segment on a disk
+
+★ **The question a segment file answers is not what it looks like but WHEN IT
+EXISTS.** Sealed data is immutable, which is what lets the read path take no
+locks — and a file being written under its final name is a half-sealed segment,
+visible to anyone who lists the directory. So the blocks go to a temporary name in
+the same directory, and the rename is the publication. Everything before it is
+invisible.
+
+The index is written after the blocks, and a fixed-width trailer after that: one
+seek to the end finds it whatever the segment's size. ⚠ **A crash therefore leaves
+a file that is not a segment rather than a broken one** — "incomplete" can be
+deleted without judgement, "corrupt" needs a human, and the trailer is what tells
+them apart.
+
+⚠ **An index is a list of byte offsets, so a wrong one does not fail.** It reads
+arbitrary bytes, and arbitrary bytes are indistinguishable from a block until the
+block's own checksum says otherwise. Everything the index claims is checked before
+any offset from it is followed: its checksum, its bounds, that it is sorted, and
+that the header's block count agrees with it.
+
+Reading maps the file, because a sealed segment never changes and any number of
+readers can share one mapping with no coordination. Two prices are paid for that
+and both are written down rather than discovered during an incident: an I/O error
+on a mapped page arrives as a SIGBUS instead of an error return, and a block handed
+back must be **owned** — a view into the mapping is a dangling pointer the instant
+the reader closes, and it behaves perfectly until then.
+
+A missing key is a named refusal, never an empty block: a caller that treats
+absence as emptiness writes over a fact it never read.
 
 ### Erasure coding
 
@@ -700,7 +733,7 @@ cmd/sdev1-addr/           the one binary: where an entity lives, and why
 docs/
   QUERY-LANGUAGE.md       the language, its grammar, and a tutorial
   diagrams/               the schematics on this page
-  adr/                    the decision corpus — twenty Accepted records
+    adr/                    the decision corpus — twenty-four Accepted records
     README.md             the index; says which half of each record is built
     FAILURES.md           the catalogue of what this does NOT survive
     BACKLOG.md            every deferred item, with a pointer back
@@ -708,18 +741,20 @@ internal/core/
   addr topology placement       the address space and where copies go
   hlc tx temporal               time: clock, identity, the two axes
   command ql                    the write path's reads, and the language
-  segment erasure crypt         the byte format, coding, and erasure of a subject
+  segment segstore              the byte format, and a run of blocks as one file
+  erasure crypt                 coding, and the erasure of a subject
   tail commit lease             the live tail, the commit point, fenced ownership
   routing prefetch admit        finding a leaf, reading ahead, shedding load
   subscribe observe chaos       streaming out, what is emitted, injected faults
   mcpsurface vfs                the agent and filesystem projections
   durability ports              policy over failure domains, and shared contracts
+  search session link           full-text search, running statements, references
 testdata/topology/        the fixture the binary runs against
 ```
 
 Four direct dependencies: a CLI framework, a compression library, a Reed–Solomon
-implementation, and their transitive support. Everything else is the standard
-library.
+implementation, and the system-call package the memory mapping needs. Everything
+else is the standard library.
 
 ---
 
