@@ -31,7 +31,7 @@ before any storage exists.
 
 ## Ordered Steps
 
-1. [S1] Write the failing tests first (TDD red): `TestCommandPrintsDescent`, `TestCommandResolvesToServers`, `TestCommandExitsNonZeroOnBadTopology`. Run the Acceptance fence and confirm it is red. [proof: acceptance]
+1. [S1] Write the failing tests first (TDD red): `TestCommandPrintsDescent`, `TestCommandResolvesToTargets`, `TestCommandExitsNonZeroOnBadTopology`, `TestCommandRequiresItsFlags`. Run the Acceptance fence and confirm it is red. [proof: acceptance]
 2. [S2] Add `urfave/cli/v3` to `go.mod` and wire the command with `--topology <path>` and `--entity <id>` flags. [proof: acceptance]
 3. [S3] Load the topology map, hash the entity, descend to the map's declared depth, and resolve.
 4. [S4] Print one line per level showing the byte consumed and the child selected, then the resolved server set in preference order.
@@ -58,8 +58,8 @@ exits non-zero if the wiring is wrong even when every unit test passes.
 
 | Test name | File | Verifies | Covers | Steps |
 |-----------|------|----------|--------|-------|
-| `TestCommandPrintsDescent` | `cmd/sdev1-addr/main_test.go` | One line per level, each naming the byte consumed and the child selected | — | S3, S4 |
-| `TestCommandResolvesToServers` | `cmd/sdev1-addr/main_test.go` | The printed server set equals `placement.Resolve` for the same inputs — the assertion that goes red if the call site is deleted | — | S3, S4 |
+| `TestCommandPrintsDescent` | `cmd/sdev1-addr/main_test.go` | One hop per level, each naming the byte of the key consumed and the child it selects, and exactly as many hops as the map's declared depth | — | S3, S4 |
+| `TestCommandResolvesToTargets` | `cmd/sdev1-addr/main_test.go` | The printed targets are the ones placement resolves, at the map's deepest level — the assertion that goes red if the call site is deleted | — | S3, S4 |
 | `TestCommandExitsNonZeroOnBadTopology` | `cmd/sdev1-addr/main_test.go` | A missing file and an unknown format version each exit non-zero with a readable message | — | S5 |
 | `TestCommandJSONMatchesTextOutput` | `cmd/sdev1-addr/main_test.go` | `--json` reports the same leaf and server set as the text form, so the two cannot drift | — | S6 |
 
@@ -67,12 +67,15 @@ exits non-zero if the wiring is wrong even when every unit test passes.
 
 | Rung | How this task shows it |
 |------|------------------------|
-| 1 — exists | The four unit tests above. |
-| 2 — something selects it | `main()` is the selector, and the Acceptance fence *runs the built binary* rather than only testing the package — deleting the `placement.Resolve` call makes `TestCommandResolvesToServers` red and the final invocation wrong. |
+| 1 — exists | The five unit tests above, three of them with subtests over the failure paths. |
+| 2 — something selects it | `main()` is the selector, and the Acceptance fence *builds and runs the binary* rather than only testing the package — deleting the `placement.Resolve` call makes `TestCommandResolvesToTargets` red and the final invocation wrong. |
 | 3 — the caller can discover it | `--help` text listing both flags; `TestCommandExitsNonZeroOnBadTopology` covers the failure path an operator meets first. |
 | 4 — it is used | Nothing measures this yet. The command is a diagnostic; usage would be observable only once the console of ADR-012 exists. |
 
 ## Mutation Log
+
+- 2026-09-04 · 489b1cf* · mutant killed · exit 1 · `cmd/sdev1-addr/main.go` · the command must actually call placement and print what it returns; dropping the assignment leaves the targets section empty while everything still compiles, and TestCommandResolvesToTargets must go red · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · covers:the printed leaf identifier
+- 2026-09-04 · 489b1cf* · mutant killed · exit 1 · `cmd/sdev1-addr/main.go` · an operator diagnostic that exits 0 on a broken topology is worse than none; TestCommandExitsNonZeroOnBadTopology must go red · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · covers:the exit code
 
 ## Invariants
 
@@ -98,3 +101,6 @@ T3's stated Stop Condition — the two must be decided together, not separately.
 - Any subcommand beyond the descent — the command grows when there is something else worth inspecting.
 
 ## Verification Log
+- 2026-09-04 · 489b1cf* · exit 0 · `set -o pipefail …` · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · ms:2108
+- 2026-09-04 · 489b1cf* · exit 0 · `set -o pipefail …` · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · ms:2347
+- 2026-09-04 · 489b1cf* · exit 0 · `set -o pipefail …` · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · ms:2083

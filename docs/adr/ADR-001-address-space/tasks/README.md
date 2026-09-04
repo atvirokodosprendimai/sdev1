@@ -29,7 +29,7 @@ it.
 | T1 | The key type, the leaf identifier, and the byte-wise descent | done | — | `go test ./internal/core/addr/... -run 'TestFanOut\|TestDescend\|TestLeafID'` |
 | T2 | The topology map as a nested-set interval tree over declared level labels | done | — | `go test ./internal/core/topology/... -run 'TestLoad\|TestMap\|TestLevels\|TestDistance\|TestInterval\|TestAncestor\|TestNested'` |
 | T3 | Deterministic placement, and client-local nearest-first ordering | done | — | `go test ./internal/core/placement/... -run 'TestResolve\|TestSpread\|TestNearest'` |
-| T4 | An operator command that shows a key's descent and placement | pending | — | `go test ./cmd/sdev1-addr/... -run 'TestCommand'` then build and run the binary |
+| T4 | An operator command that shows a key's descent and placement | done | — | `go test ./cmd/sdev1-addr/... -run 'TestCommand'` then build and run the binary |
 
 Status: `pending` | `partial` | `blocked` | `done`.
 
