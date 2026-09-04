@@ -147,6 +147,35 @@ func TestEveryFieldRoundTrips(t *testing.T) {
 	}
 }
 
+// TestSizeOfAgreesWithTheEncoder pins the two against each other.
+//
+// ⚠ Against the ENCODER, not against a hand-computed constant. A constant agrees
+// with whatever the layout was on the day it was written; the encoder is the thing
+// that has to stay true, and a size bound that drifted from it would let a caller
+// budget for bytes nobody writes.
+func TestSizeOfAgreesWithTheEncoder(t *testing.T) {
+	cases := map[string]ports.Datom{
+		"ordinary":       fact("planet-3", "mass", []byte("5.97e24")),
+		"empty value":    fact("planet-3", "note", []byte{}),
+		"nil value":      fact("planet-3", "other", nil),
+		"large value":    fact("planet-3", "atlas", make([]byte, 200_000)),
+		"multi-byte":     fact("žvaigždė-7", "masė", []byte("ø∞")),
+		"empty names":    fact("", "", nil),
+		"long attribute": fact("e", strings.Repeat("a", 4096), []byte("v")),
+	}
+	for name, d := range cases {
+		encoded, err := Encode([]ports.Datom{d})
+		if err != nil {
+			t.Fatalf("%s: Encode: %v", name, err)
+		}
+		want := len(encoded) - HeaderSize
+		if got := SizeOf(d); got != want {
+			t.Errorf("%s: SizeOf = %d, the encoder wrote %d bytes past the run header",
+				name, got, want)
+		}
+	}
+}
+
 func TestAnUnboundedEndIsForeverNotZero(t *testing.T) {
 	b, err := Encode([]ports.Datom{fact("planet-3", "mass", []byte("m"))})
 	if err != nil {
