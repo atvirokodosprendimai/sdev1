@@ -545,6 +545,35 @@ Whatever closes this must not grow a second budget dimension per class; ADR-015
 refuses a third budget kind deliberately, and priority within a budget is a
 different mechanism from a budget per priority.
 
+### §23 — Nothing bounds how long acknowledged data stays unflushed
+
+**Source:** ADR-020 (`docs/adr/ADR-020-commit-point.md`), Out of Scope and its
+Consequences; and both its task files.
+
+ADR-020 acknowledges a write once N memory replicas in distinct power domains
+hold it, and flushes afterwards. That is deliberate and it is the whole
+performance argument. It leaves an exposure window nothing measures or bounds.
+
+**How long.** Between acknowledgement and flush, the data survives independent
+failures and not correlated ones. The size of that window is how long a block
+takes to fill and be flushed — which depends on write rate, block size and the
+sealing trigger (§15), none of which is decided.
+
+**What bounds it.** A time bound ("flush at least every N seconds") and a size
+bound ("flush at least every N bytes") answer different questions, and a quiet
+tenant needs the first while a busy one needs the second. Whatever closes this
+probably needs both, and the pair is a decision rather than two constants.
+
+**What reports it.** ADR-020's `Pending` counts entries written and not yet
+committed. Nothing counts entries COMMITTED and not yet flushed, which is the
+actual exposure — and that number is what an operator wants during a power
+event, not afterwards.
+
+⚠ The trap is stating the window as an average. The number that matters is the
+worst case at the moment the power goes, which correlates with load — so the
+exposure is largest exactly when a correlated failure is most likely, and an
+average hides that completely.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
