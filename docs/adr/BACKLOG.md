@@ -480,6 +480,38 @@ per leg, which is why time is a clause at all. A multi-hop traversal syntax is
 deferred, and whatever adds it must keep that property rather than quietly
 losing it in the recursion.
 
+### §21 — Nothing exports, samples, retains or watches the event stream
+
+**Source:** ADR-012 (`docs/adr/ADR-012-observability.md`), Out of Scope; and both
+its task files. ADR-010 also defers its purge escalation here.
+
+ADR-012 decides what a component may SAY and proves every declared thing has a
+reader. Four things sit past that.
+
+**Export.** Reaching an external metrics system means choosing a format, and
+choosing one before there is a transport (§18) or anything consuming the stream
+would be choosing on no information.
+
+**Sampling and aggregation.** A stream that emits per request cannot be kept in
+full at planetary scale, so windows and rates are needed. ⚠ Sampling interacts
+badly with the drop counter: a sampled stream and a dropped stream look identical
+to a consumer unless the two are reported separately, and conflating them turns
+"we shed load" into "we lost data" or the reverse.
+
+**Retention.** How long the stream is kept is ADR-010's `Horizon` applied to a
+different sink, and it should reuse that rather than growing a second retention
+notion.
+
+**Watching, which is the one that matters.** ADR-010 leaves a purge INCOMPLETE
+when a sink has not acknowledged, and deliberately does not escalate — it defers
+that here. ADR-012 can now EXPRESS it as a declared event with a named reader.
+Nothing yet looks.
+
+⚠ That is exactly the failure ADR-012 is about, one level up: a declared thing
+whose reader exists on paper and never runs. Whatever closes this must make the
+watching real rather than declaring a watcher, and the honest test is whether an
+incomplete purge from a month ago would actually reach a person.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
