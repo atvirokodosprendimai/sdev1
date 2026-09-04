@@ -39,13 +39,29 @@ func (k Kind) String() string {
 }
 
 // keywords are matched case-insensitively; everything else is an identifier.
+//
+// ⚠ Every word added here STOPS BEING USABLE as an attribute name, and in a
+// language with no escape that silently breaks data which parsed yesterday. The
+// backtick quoting in [Lexer.Next] is what pays for the second group, and it was
+// added before them rather than after.
 var keywords = map[string]bool{
 	"SELECT": true, "FROM": true, "WHERE": true,
 	"AS": true, "OF": true, "TRANSACTION": true,
 	"MATCH": true, "SHAPE": true, "LIKE": true,
 	"REQUIRE": true, "OPTIONAL": true, "SIMILARITY": true,
 	"WITH": true, "COMPRESSION": true,
+
+	// Added for the SEARCH statement. These are ordinary English words, which
+	// is exactly why quoted identifiers had to exist first.
+	"SEARCH": true, "IN": true, "FACET": true, "BY": true, "LIMIT": true,
 }
+
+// IdentQuote surrounds an identifier that would otherwise lex as a keyword.
+//
+// ★ `limit` is the attribute named "limit"; LIMIT is the keyword. Without this,
+// adding a keyword makes every entity carrying an attribute of that name
+// unreadable, with no way to ask for it and no way to migrate off it.
+const IdentQuote = '`'
 
 // Token is one lexeme and where it was found.
 //
@@ -86,6 +102,8 @@ func (l *Lexer) Next() Token {
 	r, width := utf8.DecodeRuneInString(l.src[l.pos:])
 
 	switch {
+	case r == IdentQuote:
+		return l.lexQuotedIdent(start)
 	case r == '\'' || r == '"':
 		return l.lexString(r, start)
 	case unicode.IsDigit(r) || (r == '-' && l.peekIsDigit(l.pos+width)):
@@ -141,6 +159,29 @@ func (l *Lexer) lexString(quote rune, start int) Token {
 	// Unterminated: return what there is, positioned at the opening quote, and
 	// let the parser produce the error with the position already correct.
 	return Token{Kind: KindString, Text: b.String(), Pos: start}
+}
+
+// lexQuotedIdent reads `like this`, which is an IDENTIFIER whatever it spells.
+//
+// ★ The keyword table is never consulted, which is the whole point: this is the
+// only way to address an attribute whose name collides with a keyword, and
+// checking the table here would defeat it.
+//
+// An unterminated quote returns what there is, positioned at the opening quote,
+// and lets the parser produce the error with the position already correct — the
+// same shape as an unterminated string.
+func (l *Lexer) lexQuotedIdent(start int) Token {
+	l.pos += utf8.RuneLen(IdentQuote)
+	var b strings.Builder
+	for l.pos < len(l.src) {
+		r, width := utf8.DecodeRuneInString(l.src[l.pos:])
+		l.pos += width
+		if r == IdentQuote {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return Token{Kind: KindIdent, Text: b.String(), Pos: start}
 }
 
 func (l *Lexer) lexNumber(start int) Token {

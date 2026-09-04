@@ -15,20 +15,35 @@ Two tasks, sequential.
 |-------|------|------------|
 | 1 | T1 | none |
 | 2 | T2 | T1 |
+| 3 | T3 | T1, T2 |
+| 4 | T4 | T3 |
 
 ## Task Index
 
 | ID | Title | Status | Covers | Acceptance |
 |----|-------|--------|--------|------------|
 | T1 | What a posting is, what a caller can see, and what a facet counts | done | — | `go test ./internal/core/search/... -race -run 'TestAShreddedSubject\|TestAnUndecryptablePosting\|TestVisibleReportsNoWithheld\|TestAnalyzeIsDeterministic\|TestFacetCountsAreExact\|TestAFacetOverItsBound\|TestASearchWithoutALimit\|TestPostingCarriesItsTransactionRange'` then the crypt suite |
-| T2 | Build the index, and give search a grammar | pending | — | `go test ./internal/core/search/... -race -run 'TestRebuildFromTheLogReproducesTheIndex\|TestASearchResultIsConfirmedAgainstTheDatoms'` |
+| T2 | The SEARCH statement, and quoted identifiers to pay for it | done | — | `go test ./internal/core/ql/... -race -run 'TestSearchRoundTrips\|TestSearchWithoutALimit\|TestSearchCarriesTheSameTimeClause\|TestQuotedIdentifier\|TestSearchFacetsAreOptional\|TestNewKeywordsAreReserved\|TestQueryLanguageDocIsComplete'` then the ql, search and temporal suites |
+| T3 | An index you can actually search, and a ranking that is the same everywhere | done | — | `go test ./internal/core/search/... -race -run 'TestIndexBuiltTwice\|TestRankingDoesNotDependOnMapOrder\|TestAShreddedSubjectIsAbsentFrom\|TestResultHonoursTheLimit\|TestRarerTermsScoreHigher\|TestAnEmptyQueryIsRefused'` then the search, crypt and ql suites |
+| T4 | Persist the index, and confirm what it returns | pending | — | `go test ./internal/core/search/... -race -run 'TestRebuildFromTheLogMatchesIncremental\|TestACandidateIsConfirmedAgainstTheDatoms'` |
 
 Status: `pending` | `partial` | `blocked` | `done`.
 
-⚠ **T2 is `pending` on three things**: a storage engine (`BACKLOG.md` §12), a
-query evaluator (§20) and a ranking function chosen against a real corpus (§27).
-★That is not the same as ADR-021 being unfinished — what a posting MEANS and what
-a facet may answer are settled in T1 and proved against the real keystore.
+⚠ **T4 is `pending` on two things**: a storage engine (`BACKLOG.md` §12) and a
+query evaluator (§20). Nothing else is.
+
+⚠ **An earlier version of this record deferred the GRAMMAR and the INDEX into
+that same pending task, and it was wrong.** Parsing is parsing and an index is a
+data structure — neither needs a disk. Over-deferring them left search looking
+much further away than it was, and it is worth naming because the mistake is easy
+to repeat: "this waits on the storage engine" is true of persistence and rarely
+true of meaning.
+
+★ **So search WORKS today, in memory.** `SEARCH` parses, an index answers it,
+ranking is deterministic and rarity-weighted, and a shredded subject is absent
+from both the hits and the facet counts. What is missing is durability and
+candidate confirmation — so a result reflects what the index believes, which is
+not yet the same as what is true.
 
 ## Contract Coupling
 

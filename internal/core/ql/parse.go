@@ -95,8 +95,10 @@ func (p *parser) statement() (Statement, error) {
 		return p.parseSelect()
 	case t.Kind == KindKeyword && t.Text == "MATCH":
 		return p.parseShape()
+	case t.Kind == KindKeyword && t.Text == "SEARCH":
+		return p.parseSearch()
 	default:
-		return nil, p.errorAt(t, "SELECT or MATCH")
+		return nil, p.errorAt(t, "SELECT, MATCH or SEARCH")
 	}
 }
 

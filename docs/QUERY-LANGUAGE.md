@@ -52,12 +52,13 @@ is enforced rather than claimed — see [Documentation coverage](#documentation-
 
 ## Statements
 
-There are exactly two, and `Parse` accepts nothing else:
+There are exactly three, and `Parse` accepts nothing else:
 
 | Statement | Keyword it starts with | Compiles to |
 |---|---|---|
 | Read an entity's attributes | `SELECT` | `*Select` |
 | Find resembling subjects | `MATCH` | `*ShapeQuery` |
+| Find entities by their text | `SEARCH` | `*Search` |
 
 Anything else is refused at the first token with `expected SELECT or MATCH`. A
 statement must also be *complete* — trailing tokens are refused with
@@ -241,6 +242,43 @@ another, over subjects as they stood at a third". Under a family of temporal
 verbs this would need a second grammar; here it is the same clause applied in one
 more position. A leg with no qualifier of its own carries a zero `TimeClause`.
 
+## Search and facets
+
+```sql
+SEARCH 'red dwarf' IN description LIMIT 20
+
+SEARCH 'red dwarf' IN description, notes
+  FACET BY class, discovered_by
+  LIMIT 20
+  AS OF 1700000000
+```
+
+- **`IN`** names the attributes to search. At least one is required.
+- **`FACET BY`** is optional, and breaks the matches down by attribute value.
+- **`LIMIT`** is **required** and must be positive.
+- The time clause is the same one every other statement carries.
+
+⚠ **The limit is required rather than defaulted, and a missing one is a parse
+error.** A default would be a number nobody wrote down deciding how much of the
+cluster a query touches — and search is the largest fan-out a single request can
+cause. `ErrNoSearchLimit`'s text appears in the `Expected` field, so the error
+says which part is wrong.
+
+The query text is taken as written and analysed later by the same analyzer the
+index used. Query syntax *inside* the text — phrases, negation, wildcards — is
+not decided yet.
+
+**What comes back is a set of CANDIDATES.** The index is derived and always
+slightly behind the log, so a result must be confirmed against the datoms before
+it is trusted. That confirmation is not built (`BACKLOG.md` §20), so today a
+search over an in-memory index tells you what the index believes, which is not
+quite the same as what is true.
+
+⚠ **A shredded subject is absent from results and from facet counts**, because a
+posting is sealed with the subject's own key and simply fails to decrypt. There
+is no "withheld" count — that would be an oracle for the existence of erased
+subjects. See `internal/core/search`.
+
 ## Storage policy
 
 ```sql
@@ -271,7 +309,7 @@ value that means it — `PolicyScopes()` returns exactly one element.
 As implemented, in EBNF:
 
 ```ebnf
-statement   = select | shape ;
+statement   = select | shape | search ;
 
 select      = "SELECT" projection "FROM" ident
               [ "WHERE" predicate ]
@@ -282,6 +320,13 @@ projection  = "*" | ident { "," ident } ;
 predicate   = ident operator value ;
 operator    = "=" | "==" | "!=" | "<" | ">" | "<=" | ">=" ;
 value       = number | string | ident ;
+
+search      = "SEARCH" string "IN" attrlist
+              [ "FACET" "BY" attrlist ]
+              "LIMIT" number
+              timeclause ;
+
+attrlist    = ident { "," ident } ;
 
 shape       = "MATCH" "SHAPE" "LIKE" ident
               [ "REQUIRE"  legs ]
@@ -303,23 +348,42 @@ codec       = "none" | "identity" | "zstd" ;
 | Token class | `Kind` | Rule |
 |---|---|---|
 | end of input | `KindEOF` | Returned forever once the input is exhausted |
-| identifier | `KindIdent` | Letters, digits, `_`, `-`, `:`; must start with a letter or `_`. Case-sensitive |
-| keyword | `KindKeyword` | One of the fourteen below, matched case-insensitively and normalised to UPPER CASE in `Token.Text` |
+| identifier | `KindIdent` | Letters, digits, `_`, `-`, `:`; must start with a letter or `_`. Case-sensitive. Or **any text between backticks** — see quoting below |
+| keyword | `KindKeyword` | One of the nineteen below, matched case-insensitively and normalised to UPPER CASE in `Token.Text` |
 | number | `KindNumber` | Digits, an optional leading `-`, and any number of `.` |
 | string | `KindString` | `'single'` or `"double"` quoted; `Token.Text` excludes the quotes |
 | punctuation | `KindPunct` | Any other single rune, or one of the two-character operators `>=` `<=` `!=` `==` |
 
-**The fourteen keywords**, all reserved:
+**The nineteen keywords**, all reserved:
 
 ```
 SELECT  FROM  WHERE  AS  OF  TRANSACTION  MATCH
 SHAPE   LIKE  REQUIRE  OPTIONAL  SIMILARITY  WITH  COMPRESSION
+SEARCH  IN  FACET  BY  LIMIT
 ```
 
-⚠ **Keywords are reserved everywhere and there is no quoting mechanism.** An
-attribute named `like` or `shape` lexes as a keyword and cannot be addressed.
-That is a real limitation rather than a subtlety — if your data uses one of those
-fourteen words as an attribute name, the language cannot currently reach it.
+### Quoting an identifier
+
+Keywords are reserved everywhere — but **backticks make any word an identifier**:
+
+```sql
+SELECT `limit`, `in` FROM planet-7
+SELECT * FROM planet-7 WHERE `select` = 'yes'
+```
+
+The keyword table is never consulted inside backticks, and the quotes are not
+part of the name — `` `limit` `` is the attribute named `limit`.
+
+⚠ **This exists because adding a keyword is otherwise a silent breaking change.**
+The last five words in the table above — `SEARCH`, `IN`, `FACET`, `BY`, `LIMIT` —
+are ordinary English, and reserving them made any entity carrying an attribute of
+that name unreadable, with no way to ask for it and no way to migrate off it.
+Quoting landed in the same change as the keywords, and deliberately *before* them,
+rather than being filed as a follow-up.
+
+An earlier version of this page stated that no quoting mechanism existed. That
+was true until the `SEARCH` statement needed five more keywords and made the
+limitation someone's problem.
 
 Other lexical facts worth knowing:
 
@@ -406,6 +470,34 @@ would otherwise rest entirely on review.
 package that owns what time means. It decides nothing itself, and contains no
 branch — two implementations of a four-row table would drift, and the drift is
 invisible until a query returns the wrong history.
+
+## `Search`
+
+```go
+type Search struct {
+	Query      string     // the text, exactly as written; analysed later
+	Attributes []string   // the attributes searched; never empty
+	Facets     []string   // the attributes to break matches down by, or nil
+	Limit      int        // always positive — see ErrNoSearchLimit
+	Time       TimeClause // the same clause every statement carries
+}
+```
+
+```go
+var ErrNoSearchLimit = errors.New("ql: a search needs a positive LIMIT")
+```
+
+`ErrNoSearchLimit` is not returned directly; its text is embedded in the
+`Expected` field of the `ParseError` a limitless search produces, so the caller
+gets the position and the reason together.
+
+```go
+const IdentQuote = '`'
+```
+
+`IdentQuote` is the rune that makes any word an identifier. It is exported so a
+tool that generates or escapes queries uses the same character the lexer does,
+rather than hard-coding a backtick and drifting if it ever changes.
 
 ## `ShapeQuery`, `Leg` and `LegKind`
 
@@ -600,10 +692,11 @@ with a reason, and none is a gap someone forgot.
 | Enumerating entities | The language reads a **named** entity. An unbounded listing over a planetary key space is not something a single result can return, so the shape of that answer is a real decision rather than a missing keyword. |
 | Ordering or limiting a `SELECT` | There is nothing to order by. A `SELECT` reads one named entity, so its result has no ranking, and `ORDER BY` before an evaluator exists would be guessing at a cost model. ⚠ADR-021 lifts this for `SEARCH`, where ranking exists and an unranked, unlimited search is a full scan with extra steps. The statement itself is `pending` — `BACKLOG.md` §27. |
 | Aggregation — `COUNT`, `SUM` | Not in the language. ⚠The one counting a caller can ask for is a FACET over a search result, decided in ADR-021: exact or refused, never estimated. Also `pending` on §27. |
-| Full-text search | Decided in ADR-021 and not yet in the grammar. ⚠The posting model is deliberately settled first, because an ordinary inverted index stores extracted plaintext and would silently undo crypto-shredding — and that cannot be retrofitted, since every posting already written would already be in the clear. |
+| ~~Full-text search~~ | **`SEARCH` now parses** and runs against an in-memory index with deterministic ranking. What is still missing is a PERSISTED index and confirmation of candidates against the datoms (`BACKLOG.md` §27 and §20), so a result today reflects what the index believes rather than what is true. |
+| Query syntax inside the search text | Phrases, negation and wildcards are undecided. The text is taken as written and analysed by the same analyzer the index used. |
 | Writes — `ASSERT` / `RETRACT` | Nothing evaluates yet, so a write statement would be syntax with no semantics. |
 | `UPDATE` or `DELETE`, ever | The store appends. A retraction is an assertion, and erasure is the destruction of a key. A verb implying in-place mutation would describe a data model this system does not have. |
-| Quoting a keyword as an identifier | No quoting mechanism exists, so the fourteen keywords are unreachable as attribute names. A real limitation, recorded rather than hidden. |
+| ~~Quoting a keyword as an identifier~~ | **No longer true.** Backticks make any word an identifier — see [Quoting an identifier](#quoting-an-identifier). It was a real limitation until the `SEARCH` statement needed five more keywords and made it someone's problem. |
 | Re-encoding existing data via a policy | Every block records how it was written. A policy sets what the **next** write produces; there is no scope value meaning "and rewrite what exists". |
 | Naming a similarity floor with `<` or `=` | A similarity threshold is a floor. Accepting `<` would let a query ask for *dissimilar* subjects through a keyword that says the opposite. |
 
