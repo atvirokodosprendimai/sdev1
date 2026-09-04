@@ -130,10 +130,10 @@ process — but there is still no network transport and no query evaluator, so
 
 | | |
 |---|---|
-| **Runs today** | 33 Go packages, 365 tests, race-clean — 32 packages carry tests and the thirty-third, `cmd/sdev1-ql`, is proved by its records' fences running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
+| **Runs today** | 33 Go packages, 366 tests, race-clean — 32 packages carry tests and the thirty-third, `cmd/sdev1-ql`, is proved by its records' fences running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
 | **Exists now** | A storage engine and an evaluator: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, and a `SELECT` that reads one entity out of it and filters. |
 | **Does not exist** | A transport, a query planner, a similarity metric, a node binary, a running cluster. |
-| **Honestly measured** | 247 mutants killed across the corpus, 17 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Six of them found claims that nothing was holding: one was a real bug, and one showed a claim that **no test in this design can falsify**, which was withdrawn rather than propped up. |
+| **Honestly measured** | 249 mutants killed across the corpus, 17 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Six of them found claims that nothing was holding: one was a real bug, and one showed a claim that **no test in this design can falsify**, which was withdrawn rather than propped up. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are
@@ -741,7 +741,7 @@ cmd/sdev1-addr/           the one binary: where an entity lives, and why
 docs/
   QUERY-LANGUAGE.md       the language, its grammar, and a tutorial
   diagrams/               the schematics on this page
-    adr/                    the decision corpus — twenty-nine Accepted records
+    adr/                    the decision corpus — thirty Accepted records
     README.md             the index; says which half of each record is built
     FAILURES.md           the catalogue of what this does NOT survive
     BACKLOG.md            every deferred item, with a pointer back
