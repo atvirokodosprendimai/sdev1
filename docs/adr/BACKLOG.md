@@ -512,6 +512,39 @@ whose reader exists on paper and never runs. Whatever closes this must make the
 watching real rather than declaring a watcher, and the honest test is whether an
 incomplete purge from a month ago would actually reach a person.
 
+### §22 — Nothing decides what happens when every replica sheds, or which reads matter more
+
+**Source:** ADR-015 (`docs/adr/ADR-015-admission-control.md`), Out of Scope; and
+both its task files.
+
+ADR-015 lets a saturating node stop pulling read work, which turns saturation
+into a routing outcome rather than an error. Two questions sit past it and both
+appear under exactly the load that makes them urgent.
+
+**Every replica sheds at once.** Withdrawal removes capacity from the queue, so a
+cluster-wide load spike can leave a queue with nowhere to put work. Nothing in
+ADR-015 prevents that and it says so. The plausible answers differ sharply — a
+floor on how many replicas may be withdrawn at once, an admission decision that
+looks at the group rather than only at itself, or accepting that the queue backs
+up and letting it — and choosing between them needs a cluster to observe rather
+than an argument.
+
+⚠ The trap is that the obvious fix reintroduces the problem: a node that refuses
+to withdraw because its peers already have is a node that keeps taking work it
+cannot serve, which is the error-returning behaviour ADR-015 rejected, arrived at
+by a different route.
+
+**Which reads matter more.** A repair read and a user query compete for the same
+budget, and shedding treats them alike. That is wrong in both directions: shedding
+the repair prolongs the degradation that is causing the load, and shedding the
+user query is what the mechanism is for. ⚠ And §16 is the reason this is not
+merely a preference — a degraded read costs `k` fragment fetches, so the reads a
+repair is trying to make unnecessary are also the expensive ones.
+
+Whatever closes this must not grow a second budget dimension per class; ADR-015
+refuses a third budget kind deliberately, and priority within a budget is a
+different mechanism from a budget per priority.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.

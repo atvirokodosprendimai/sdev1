@@ -36,6 +36,16 @@ const (
 	// than one the tail had seen. ADR-009 makes a superseded writer fail
 	// harmlessly, and a burst of these is how a flapping handover looks.
 	KindWriterFencedOut Kind = "lease.writer-fenced-out"
+
+	// KindQueueWithdrawn: a node stopped pulling read work because it saturated.
+	// ADR-015 makes that a routing outcome rather than an error, so it is
+	// invisible to clients — which is exactly why an operator needs to see it.
+	KindQueueWithdrawn Kind = "admit.queue-withdrawn"
+
+	// KindQueueRejoined: a node started pulling again, having fallen below the
+	// rejoin threshold. Paired with the withdrawal, these two are how flapping
+	// would show up if the hysteresis band were ever too narrow.
+	KindQueueRejoined Kind = "admit.queue-rejoined"
 )
 
 func init() {
@@ -64,6 +74,16 @@ func init() {
 			Kind:   KindWriterFencedOut,
 			Reader: "console: leases panel — handover flapping",
 			Fields: []string{"offered_epoch", "seen_epoch", "holder"},
+		},
+		{
+			Kind:   KindQueueWithdrawn,
+			Reader: "console: load panel — which nodes are shedding, and the shed-rate alert",
+			Fields: []string{"node", "utilisation", "threshold"},
+		},
+		{
+			Kind:   KindQueueRejoined,
+			Reader: "console: load panel — paired with withdrawal, this is what flapping looks like",
+			Fields: []string{"node", "utilisation", "threshold"},
 		},
 	} {
 		if err := Register(d); err != nil {
