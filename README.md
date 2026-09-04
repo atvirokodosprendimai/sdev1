@@ -13,6 +13,31 @@ and "what did we believe then" stay separately answerable — forever.
 
 ---
 
+## What you can actually do today
+
+**Short version: you can parse any query, and run search and addressing in
+memory. You cannot store a fact or read one back, because there is no storage
+engine.**
+
+| | Status | What that means |
+|---|---|---|
+| `SELECT … FROM … WHERE … AS OF … TRANSACTION …` | **parses** | The tree is correct and the time defaults resolve. Nothing executes it. |
+| `MATCH SHAPE LIKE … REQUIRE … OPTIONAL … SIMILARITY …` | **parses** | Same. Per-leg time qualifiers work. |
+| `SEARCH … IN … FACET BY … LIMIT …` | **parses + runs** | Against an **in-memory** index: real ranking, real facets, erasure honoured. Not persisted. |
+| Backtick-quoted identifiers — `` `limit` `` | **works** | Any keyword is addressable as an attribute name. |
+| Placing an entity in the trie | **runs** | `cmd/sdev1-addr`, end to end, no network. |
+| **Writing a fact — `ASSERT` / `RETRACT`** | ❌ **not in the language** | The write *model* exists in Go (`command.Transaction`), but there is no statement. Decided, not built. |
+| **`INSERT` / `UPDATE` / `DELETE`** | ❌ **will never exist** | The store appends. An update is an assertion, a delete a retraction, an erasure a destroyed key. |
+| **Links — `relate`, `related`, references between entities** | ❌ **do not exist** | `Datom.Value` is untyped bytes, so a reference is indistinguishable from a string. Nothing can traverse. |
+| **Taxonomies / hierarchies** | ❌ **do not exist** | They need links first. Once links are bitemporal datoms, "what did the hierarchy look like in March" falls out — but none of it is built. |
+| **Joins, `AND`/`OR`, `ORDER BY`, `COUNT`** | ❌ | See the query guide's boundary table for which are decisions and which are gaps. |
+| Storing anything on a disk | ❌ | No storage engine. This is the blocker under almost everything else. |
+| Reading a stored fact back | ❌ | No query evaluator. |
+| A server, a cluster, a network | ❌ | No transport. Everything is in-process. |
+
+→ **[How to query, with the full grammar and worked examples](docs/QUERY-LANGUAGE.md)**
+→ **[What is next, ordered by what blocks what](TODO.md)**
+
 ## Where this actually is
 
 Read this before anything else on the page.
@@ -245,16 +270,51 @@ One idea: **time is a clause, not a family of verbs.** There is no
 `SELECT_HISTORY` and no `AS_OF_SELECT` — there is `SELECT`, and it may carry a
 time qualifier.
 
+**Every form the language accepts, in full.** There are three statements and one
+standalone clause — that is the whole surface:
+
 ```sql
+-- Read an entity. `*` is every attribute.
 SELECT * FROM planet-7
-SELECT mass, radius FROM planet-7 WHERE mass > 1000
-SELECT * FROM planet-7 AS OF 1700000000
+SELECT mass, radius FROM planet-7
+SELECT name FROM planet-7 WHERE class = 'terrestrial'
+SELECT * FROM planet-7 WHERE mass >= -40.5
+
+-- Time travel. Two independent axes.
+SELECT * FROM planet-7 AS OF 1700000000                       -- valid time
+SELECT * FROM planet-7 TRANSACTION 1700000500                 -- transaction time
 SELECT * FROM planet-7 AS OF 1700000000 TRANSACTION 1700000500
 
+-- Find subjects that resemble one. Metric and threshold are required.
 MATCH SHAPE LIKE planet-7
   REQUIRE mass AS OF 1700000000, radius
   OPTIONAL nickname
   SIMILARITY jaccard >= 0.8
+
+-- Full-text search. LIMIT is required.
+SEARCH 'red dwarf' IN description LIMIT 20
+SEARCH 'red dwarf' IN description, notes
+  FACET BY class, discovered_by
+  LIMIT 20
+  AS OF 1700000000
+
+-- Any keyword is addressable as an attribute name.
+SELECT `limit`, `in` FROM planet-7
+
+-- A storage policy for the NEXT write. Parsed standalone; no write statement
+-- exists to carry it yet.
+WITH COMPRESSION zstd
+```
+
+⚠ **There is no way to write a fact.** No `ASSERT`, no `RETRACT`, and by decision
+never an `UPDATE` or a `DELETE`. ⚠ **And there are no links** — no `relate`, no
+references between entities, so nothing can be traversed and there are no
+taxonomies. Both are real gaps, not omissions from this list.
+
+Parse any of the above today:
+
+```bash
+go test ./internal/core/ql/... -run TestSearchRoundTripsThroughTheAST -v
 ```
 
 Because time is a clause, a **per-leg** qualifier costs nothing extra — match on
