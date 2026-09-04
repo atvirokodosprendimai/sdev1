@@ -357,6 +357,38 @@ Whatever closes this should extend the catalogue rather than sit beside it — a
 disposition says whether the data came back, and a cost column would say what it
 took, which is the pair an operator actually needs.
 
+### §17 — The keystore has no home, no rotation and no caching story
+
+**Source:** ADR-007 (`docs/adr/ADR-007-crypto-shredding.md`), Out of Scope and
+its Follow-ups; and both its task files.
+
+ADR-007 makes erasure the destruction of a per-subject key and puts that key in a
+mutable keystore, deliberately separate from the immutable ciphertext. It does
+not say where the keystore actually lives, and three questions follow.
+
+**Persistence.** The shipped implementation is `MemoryKeystore`, and its name is
+the warning: every key is lost on restart, which erases everything. That is safe
+in the wrong direction and unusable in production. Whatever replaces it inherits
+an unusual requirement — it must be genuinely DELETABLE, since a store that only
+tombstones has not destroyed anything, and a log-structured store that keeps old
+versions would quietly defeat the whole record.
+
+⚠ **The keystore must not share a backup with the data.** Restoring one that
+holds both resurrects the key beside the ciphertext, silently undoing every
+erasure it contains. This is the single easiest way to get crypto-shredding
+wrong, and it is a retention decision rather than a code one.
+
+**Rotation.** Re-encrypting a subject under a new key means reading and rewriting
+every block it owns — the enumeration problem ADR-007 exists to avoid, arriving
+by another door. It may simply be that keys are never rotated and compromise is
+handled by shredding and re-ingesting, but that is a decision nobody has taken.
+
+**Caching.** Every read of an encrypted subject costs a key fetch, and caching is
+the obvious answer. It is also the obvious way to break erasure: a cached key
+outlives its destruction, so a shredded subject stays readable on whichever node
+happened to hold it. Any cache needs an invalidation that is part of the shred
+rather than beside it, and "eventually" is not good enough for an erasure.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
