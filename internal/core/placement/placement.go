@@ -1,9 +1,10 @@
 package placement
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/maphash"
 	"sort"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
@@ -18,10 +19,24 @@ var ErrDepthMismatch = errors.New("placement: leaf depth does not match the map"
 // ErrNoTargets reports a map that declares no placement targets.
 var ErrNoTargets = errors.New("placement: map declares no targets")
 
-// seed is fixed rather than random so that scoring is identical in every process
-// and every run. A per-process seed would make placement disagree between
-// clients, which is the one thing this package may not do.
-var seed = maphash.MakeSeed()
+// ⚠ There is deliberately NO SEED VARIABLE HERE, and re-introducing one is the
+// mistake this comment exists to prevent.
+//
+// This scoring must be identical in every process, on every machine, forever —
+// two clients that disagree place the same leaf on different servers, and the
+// data written by one is then looked for by the other. [weightedScore] therefore
+// uses an unseeded hash whose output is a pure function of its input bytes.
+//
+// A seeded hash is the natural reach here and it is wrong: `maphash.MakeSeed`
+// returns a NEW RANDOM seed per process, so placement would agree with itself
+// all day inside one binary and disagree with every other binary in the cluster.
+// It cannot be fixed by seeding from a constant either — a `maphash.Seed` can
+// only be produced by `MakeSeed`, so there is no constant to use.
+//
+// ★ Found 2026-09-04 by running cmd/sdev1-addr twice and getting two different
+// orders. Every in-process test passed, because a Go test binary is ONE process
+// and the seed is constant within it. The invariant is cross-process, so only a
+// check on VALUES can hold it — see TestResolveOrderIsPinnedAcrossProcesses.
 
 // Resolve returns the canonical, ordered set of targets for a leaf.
 //
@@ -77,14 +92,23 @@ func Resolve(leaf addr.LeafID, m topology.Map) ([]string, error) {
 // removing it: a target an operator has drained should stop attracting new
 // placements, not vanish from an answer other replicas are computed against.
 func weightedScore(leaf addr.LeafID, n topology.Node) uint64 {
-	var h maphash.Hash
-	h.SetSeed(seed)
-	var depth [1]byte
-	depth[0] = leaf.Depth
-	_, _ = h.Write(depth[:])
-	_, _ = h.Write(leaf.Bytes())
-	_, _ = h.WriteString(n.Name)
-	raw := h.Sum64()
+	// SHA-256, truncated: unseeded, so the same bytes give the same score in
+	// every process, and well-distributed, so the ranking does not correlate with
+	// anything about the name.
+	//
+	// ⚠ FNV-1a was tried here first and is NOT adequate, for a reason that is
+	// invisible unless you look at the resulting order. Its avalanche is weak
+	// enough that on a fixture of four targets the ranking came out in exact name
+	// order — srv-3, srv-2, srv-1-d1, srv-1-d0 — and stayed in that order when
+	// the hash input was perturbed. Deterministic, and useless: a target's score
+	// tracked its name, so placement would systematically favour whichever
+	// servers sort late, and rendezvous hashing's whole point is spread.
+	//
+	// ★ The requirement here is determinism AND distribution. It is easy to
+	// satisfy the first alone and not notice the second, because every
+	// determinism test still passes.
+	sum := sha256.Sum256(scoringInput(leaf, n.Name))
+	raw := binary.BigEndian.Uint64(sum[:8])
 	if n.Weight <= 0 {
 		return 0
 	}
@@ -92,6 +116,20 @@ func weightedScore(leaf addr.LeafID, n topology.Node) uint64 {
 	// weight class. Kept deliberately simple: this is a ranking, not a
 	// probability model.
 	return (raw >> 16) * uint64(n.Weight)
+}
+
+// scoringInput is the exact byte sequence a score is taken over.
+//
+// ★ It is a named function so the scoring input has one definition rather than
+// being spelled out at each call site. The depth is included because two leaves
+// with the same prefix bytes at different depths are different leaves, and
+// hashing only the prefix would score them identically.
+func scoringInput(leaf addr.LeafID, name string) []byte {
+	buf := make([]byte, 0, 1+len(leaf.Bytes())+len(name))
+	buf = append(buf, leaf.Depth)
+	buf = append(buf, leaf.Bytes()...)
+	buf = append(buf, name...)
+	return buf
 }
 
 // Spread reorders a canonical set so that consecutive entries fall in distinct

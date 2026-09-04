@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" width="900" height="560" role="img" aria-label="The write path: an entry is appended to the tail, replicated into memory across distinct power domains, and becomes visible when the watermark advances — which is the commit point. Flushing and sealing happen later on their own schedule.">
+  <title>The write path and the commit point</title>
+  <desc>A write carries its lease epoch, is appended to the live tail where it is not yet reachable, is replicated into memory on nodes in distinct power domains, and commits when the watermark advances past it. Flushing to disk and sealing into coded segments happen afterwards at a different granularity.</desc>
+
+  <rect x="0" y="0" width="900" height="560" fill="#FBFAF7"/>
+  <rect x="0.5" y="0.5" width="899" height="559" fill="none" stroke="#DCD6C9"/>
+
+  <text x="32" y="42" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="600" fill="#26241F">The write path — and where it commits</text>
+  <text x="32" y="64" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#6E6759">A copy that exists is not the same as a copy that counts. The commit point says what a replica must have DONE before the caller hears “yes”.</text>
+
+  <rect x="32" y="88" width="836" height="192" rx="6" fill="#F6E9E2" stroke="#DDB49C"/>
+  <text x="48" y="110" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#A26A45" letter-spacing="0.8">BEFORE THE CALLER HEARS “YES”</text>
+
+  <rect x="48" y="124" width="150" height="132" rx="5" fill="#FBFAF7" stroke="#DDB49C"/>
+  <text x="62" y="146" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">1 · write arrives</text>
+  <text x="62" y="166" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#6E6759">It carries the writer’s</text>
+  <text x="62" y="181" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#6E6759">lease epoch.</text>
+  <text x="62" y="205" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A26A45">An epoch below the</text>
+  <text x="62" y="220" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A26A45">highest seen is refused</text>
+  <text x="62" y="235" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A26A45">HERE, at the resource.</text>
+
+  <line x1="198" y1="190" x2="218" y2="190" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M225 190 l-10 -5.5 v11 z" fill="#B4531F"/>
+
+  <rect x="230" y="124" width="150" height="132" rx="5" fill="#FBFAF7" stroke="#DDB49C"/>
+  <text x="244" y="146" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">2 · append to tail</text>
+  <text x="244" y="166" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#6E6759">Written in full, but</text>
+  <text x="244" y="181" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#6E6759">still past the watermark.</text>
+  <text x="244" y="205" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A26A45">No reader can reach it.</text>
+  <text x="244" y="220" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A26A45">Not guarded by a lock —</text>
+  <text x="244" y="235" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A26A45">simply not addressable.</text>
+
+  <line x1="380" y1="190" x2="400" y2="190" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M407 190 l-10 -5.5 v11 z" fill="#B4531F"/>
+
+  <rect x="412" y="124" width="176" height="132" rx="5" fill="#FBFAF7" stroke="#DDB49C"/>
+  <text x="426" y="146" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">3 · memory replicas</text>
+  <rect x="426" y="156" width="148" height="24" rx="3" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="436" y="172" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#5F5A72">power domain A ✓</text>
+  <rect x="426" y="184" width="148" height="24" rx="3" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="436" y="200" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#5F5A72">power domain B ✓</text>
+  <rect x="426" y="212" width="148" height="24" rx="3" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="436" y="228" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#5F5A72">power domain C ✓</text>
+  <text x="426" y="250" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" fill="#A26A45">DISTINCT domains are counted, not nodes.</text>
+
+  <line x1="604" y1="100" x2="604" y2="268" stroke="#B4531F" stroke-width="2.4" stroke-dasharray="7 5"/>
+  <rect x="546" y="88" width="116" height="22" rx="4" fill="#B4531F"/>
+  <text x="604" y="104" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#FBFAF7" letter-spacing="0.6">COMMIT POINT</text>
+
+  <rect x="620" y="124" width="112" height="132" rx="5" fill="#FBFAF7" stroke="#B4531F" stroke-width="1.6"/>
+  <text x="632" y="146" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">4 · watermark</text>
+  <text x="632" y="162" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">advances</text>
+  <text x="632" y="184" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#B4531F">The entry becomes</text>
+  <text x="632" y="199" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#B4531F">visible to readers</text>
+  <text x="632" y="214" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#B4531F">at this instant.</text>
+  <text x="632" y="238" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" fill="#8A7F66">Entries publish IN</text>
+  <text x="632" y="251" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" fill="#8A7F66">ORDER — it is a prefix.</text>
+
+  <line x1="732" y1="190" x2="752" y2="190" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M759 190 l-10 -5.5 v11 z" fill="#B4531F"/>
+
+  <rect x="764" y="124" width="88" height="132" rx="5" fill="#FBFAF7" stroke="#DDB49C"/>
+  <text x="776" y="146" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">5 · ack</text>
+  <text x="776" y="168" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#6E6759">The caller</text>
+  <text x="776" y="183" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#6E6759">hears yes.</text>
+  <text x="776" y="207" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" fill="#8A7F66">No disk has</text>
+  <text x="776" y="220" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" fill="#8A7F66">been touched</text>
+  <text x="776" y="233" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" fill="#8A7F66">yet.</text>
+
+  <path d="M450 280 v22 h-2 v0 h4 v0 h-2" fill="none" stroke="#8A8375" stroke-width="1.2" stroke-dasharray="4 4"/>
+  <line x1="450" y1="280" x2="450" y2="312" stroke="#8A8375" stroke-width="1.2" stroke-dasharray="4 4"/>
+  <path d="M450 319 l-5.5 -10 h11 z" fill="#8A8375"/>
+  <text x="464" y="302" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">later, and on a different clock</text>
+
+  <rect x="32" y="326" width="836" height="132" rx="6" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="48" y="348" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#6F6790" letter-spacing="0.8">AFTERWARDS — ON ITS OWN SCHEDULE</text>
+
+  <rect x="48" y="360" width="240" height="82" rx="5" fill="#FBFAF7" stroke="#B9B2CC"/>
+  <text x="62" y="382" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">6 · flush the block to disk</text>
+  <text x="62" y="402" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">Per BLOCK, not per transaction —</text>
+  <text x="62" y="417" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">conflating the two would hold a whole</text>
+  <text x="62" y="432" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">block of writes unacknowledged.</text>
+
+  <line x1="288" y1="401" x2="308" y2="401" stroke="#6F6790" stroke-width="1.6"/>
+  <path d="M315 401 l-10 -5.5 v11 z" fill="#6F6790"/>
+
+  <rect x="320" y="360" width="240" height="82" rx="5" fill="#FBFAF7" stroke="#B9B2CC"/>
+  <text x="334" y="382" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">7 · seal the segment</text>
+  <text x="334" y="402" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">Published by swapping an immutable</text>
+  <text x="334" y="417" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">manifest, so nobody ever observes a</text>
+  <text x="334" y="432" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">half-sealed segment.</text>
+
+  <line x1="560" y1="401" x2="580" y2="401" stroke="#6F6790" stroke-width="1.6"/>
+  <path d="M587 401 l-10 -5.5 v11 z" fill="#6F6790"/>
+
+  <rect x="592" y="360" width="260" height="82" rx="5" fill="#FBFAF7" stroke="#B9B2CC"/>
+  <text x="606" y="382" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">8 · erasure-code it</text>
+  <text x="606" y="402" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">k data + m parity fragments, one per</text>
+  <text x="606" y="417" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">failure domain. Storage cost falls from</text>
+  <text x="606" y="432" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">3× to (k+m)/k.</text>
+
+  <text x="32" y="488" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#A26A45">⚠ N memory copies protect against INDEPENDENT failure, not correlated failure.</text>
+  <text x="32" y="508" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">Three nodes on one power feed losing it together lose everything unflushed, and nothing reports that this happened. So the replicas are REQUIRED to sit in distinct</text>
+  <text x="32" y="524" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">power domains rather than merely permitted to — the commit condition counts distinct domains, and refuses a write that can only reach one.</text>
+  <text x="32" y="544" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8A7F66">Two is a DURABILITY floor, not a consensus floor: the smallest genuinely available shape is two data replicas plus a witness.</text>
+</svg>

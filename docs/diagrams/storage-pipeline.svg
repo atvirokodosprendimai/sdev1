@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" width="900" height="600" role="img" aria-label="The storage pipeline: compress, then encrypt, then erasure-code. Each block records the codec and cipher it was written with, and each fragment carries its own checksum.">
+  <title>How a block is stored</title>
+  <desc>Bytes are compressed, then encrypted, then erasure-coded into k data and m parity fragments placed one per failure domain. The block header records the codec and cipher used, so a settings change never reinterprets stored data. Each fragment is checksummed and verified before decoding.</desc>
+
+  <rect x="0" y="0" width="900" height="600" fill="#FBFAF7"/>
+  <rect x="0.5" y="0.5" width="899" height="599" fill="none" stroke="#DCD6C9"/>
+
+  <text x="32" y="42" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="600" fill="#26241F">How a block is stored</text>
+  <text x="32" y="64" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#6E6759">The order is fixed rather than configurable, and every block carries the record of how it was written.</text>
+
+  <rect x="48" y="94" width="140" height="76" rx="5" fill="#F2EEE4" stroke="#C9C0AC"/>
+  <text x="118" y="126" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#26241F">raw bytes</text>
+  <text x="118" y="146" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#6E6759">datoms of one</text>
+  <text x="118" y="160" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#6E6759">block</text>
+
+  <line x1="188" y1="132" x2="212" y2="132" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M219 132 l-10 -5.5 v11 z" fill="#B4531F"/>
+
+  <rect x="222" y="94" width="150" height="76" rx="5" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="297" y="120" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#26241F">1 · compress</text>
+  <text x="297" y="140" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">Must come first —</text>
+  <text x="297" y="154" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">ciphertext does not</text>
+  <text x="297" y="168" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">compress.</text>
+
+  <line x1="372" y1="132" x2="396" y2="132" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M403 132 l-10 -5.5 v11 z" fill="#B4531F"/>
+
+  <rect x="406" y="94" width="150" height="76" rx="5" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="481" y="120" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#26241F">2 · encrypt</text>
+  <text x="481" y="140" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">Per-subject key, so</text>
+  <text x="481" y="154" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">destroying the key</text>
+  <text x="481" y="168" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">erases the subject.</text>
+
+  <line x1="556" y1="132" x2="580" y2="132" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M587 132 l-10 -5.5 v11 z" fill="#B4531F"/>
+
+  <rect x="590" y="94" width="150" height="76" rx="5" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="665" y="120" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#26241F">3 · erasure-code</text>
+  <text x="665" y="140" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">Last — coding first</text>
+  <text x="665" y="154" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">would mean</text>
+  <text x="665" y="168" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">compressing parity.</text>
+
+  <line x1="740" y1="132" x2="764" y2="132" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M771 132 l-10 -5.5 v11 z" fill="#B4531F"/>
+
+  <rect x="776" y="94" width="76" height="76" rx="5" fill="#F6E9E2" stroke="#DDB49C"/>
+  <text x="814" y="126" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#26241F">stripe</text>
+  <text x="814" y="146" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A26A45">on disk,</text>
+  <text x="814" y="160" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A26A45">everywhere</text>
+
+  <text x="48" y="200" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8A7F66">The order is a consequence, not a preference: each step destroys the property the next one needs.</text>
+
+  <line x1="32" y1="216" x2="868" y2="216" stroke="#E4DFD2"/>
+
+  <text x="48" y="244" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#8A7F66" letter-spacing="0.8">THE BLOCK HEADER — 18 BYTES, FIXED WIDTH</text>
+
+  <rect x="48" y="256" width="118" height="42" rx="4" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="107" y="274" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#26241F">codec</text>
+  <text x="107" y="290" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" fill="#6F6790">how to decompress</text>
+
+  <rect x="174" y="256" width="118" height="42" rx="4" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="233" y="274" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#26241F">cipher</text>
+  <text x="233" y="290" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" fill="#6F6790">how to decrypt</text>
+
+  <rect x="300" y="256" width="118" height="42" rx="4" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="359" y="274" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#26241F">stages</text>
+  <text x="359" y="290" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" fill="#6F6790">which ran at all</text>
+
+  <rect x="426" y="256" width="118" height="42" rx="4" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="485" y="274" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#26241F">rawLen</text>
+  <text x="485" y="290" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" fill="#6F6790">recorded, not inferred</text>
+
+  <rect x="552" y="256" width="118" height="42" rx="4" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="611" y="274" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#26241F">storedLen</text>
+  <text x="611" y="290" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" fill="#6F6790">bytes on the medium</text>
+
+  <rect x="678" y="256" width="174" height="42" rx="4" fill="#F6E9E2" stroke="#DDB49C"/>
+  <text x="765" y="274" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#26241F">checksum</text>
+  <text x="765" y="290" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" fill="#A26A45">verified BEFORE the codec runs</text>
+
+  <text x="48" y="322" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8A7F66">A setting is a POLICY for the next write. Held only in configuration, changing it would make every existing block unreadable — so it travels with the block instead.</text>
+
+  <line x1="32" y1="340" x2="868" y2="340" stroke="#E4DFD2"/>
+
+  <text x="48" y="368" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#8A7F66" letter-spacing="0.8">THE STRIPE — HERE AT k=8, m=2, ONE FRAGMENT PER FAILURE DOMAIN</text>
+
+  <rect x="74" y="382" width="68" height="56" rx="4" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="108" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#2F6B5E">d0</text>
+  <text x="108" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#4E6B61">✓ crc</text>
+
+  <rect x="150" y="382" width="68" height="56" rx="4" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="184" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#2F6B5E">d1</text>
+  <text x="184" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#4E6B61">✓ crc</text>
+
+  <rect x="226" y="382" width="68" height="56" rx="4" fill="#F5E4E4" stroke="#C08A8A" stroke-dasharray="4 3"/>
+  <text x="260" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#9C3030">d2</text>
+  <text x="260" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#9C3030">✗ lost</text>
+
+  <rect x="302" y="382" width="68" height="56" rx="4" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="336" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#2F6B5E">d3</text>
+  <text x="336" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#4E6B61">✓ crc</text>
+
+  <rect x="378" y="382" width="68" height="56" rx="4" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="412" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#2F6B5E">d4</text>
+  <text x="412" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#4E6B61">✓ crc</text>
+
+  <rect x="454" y="382" width="68" height="56" rx="4" fill="#F5E4E4" stroke="#C08A8A" stroke-dasharray="4 3"/>
+  <text x="488" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#9C3030">d5</text>
+  <text x="488" y="420" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#9C3030">✗ crc failed</text>
+  <text x="488" y="432" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#9C3030">→ an erasure</text>
+
+  <rect x="530" y="382" width="68" height="56" rx="4" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="564" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#2F6B5E">d6</text>
+  <text x="564" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#4E6B61">✓ crc</text>
+
+  <rect x="606" y="382" width="68" height="56" rx="4" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="640" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#2F6B5E">d7</text>
+  <text x="640" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#4E6B61">✓ crc</text>
+
+  <rect x="682" y="382" width="68" height="56" rx="4" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="716" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#6F6790">p0</text>
+  <text x="716" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#6F6790">parity</text>
+
+  <rect x="758" y="382" width="68" height="56" rx="4" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="792" y="406" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#6F6790">p1</text>
+  <text x="792" y="424" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.5" fill="#6F6790">parity</text>
+
+  <text x="48" y="462" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#2F6B5E">Any 8 of the 10 rebuild the block exactly. Two are gone here, and the read still succeeds at full fidelity.</text>
+
+  <rect x="32" y="482" width="836" height="98" rx="6" fill="#F5E4E4" stroke="#C08A8A"/>
+  <text x="48" y="506" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#9C3030">⚠ Why every fragment carries its own checksum</text>
+  <text x="48" y="526" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">A code with m parity fragments corrects m fragments known to be MISSING, but only ⌊m/2⌋ that are present and WRONG — locating a fault costs as much</text>
+  <text x="48" y="542" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">redundancy as repairing it. Without per-fragment checksums, silent corruption on three of ten fragments would decode “successfully” into wrong bytes.</text>
+  <text x="48" y="564" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#9C3030">Verifying first turns every ERROR into an ERASURE, which removes the case where reconstruction returns wrong data and reports success.</text>
+</svg>

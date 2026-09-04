@@ -2,6 +2,8 @@ package placement
 
 import (
 	"errors"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -35,8 +37,164 @@ func leafFor(t *testing.T, entity string, depth uint8) addr.LeafID {
 	return l
 }
 
+// TestResolveOrderIsPinnedAcrossProcesses is the regression guard for the one
+// failure the rest of this file structurally cannot see.
+//
+// ⚠ Every other determinism check here calls Resolve repeatedly IN ONE PROCESS,
+// and a Go test binary is one process. A per-process random seed is therefore
+// constant for the whole suite, so scoring that differs on every machine in the
+// cluster passes all of them. That is not hypothetical: placement was seeded
+// with `maphash.MakeSeed()` until 2026-09-04, and it was caught by running
+// cmd/sdev1-addr twice by hand while writing documentation — not by the tests.
+//
+// ★ A cross-process invariant can only be held by a check on VALUES. These are
+// golden: if the ordering function changes at all, this fails and the change has
+// to be a deliberate one, because it re-places every leaf in an existing cluster.
+func TestResolveOrderIsPinnedAcrossProcesses(t *testing.T) {
+	m := loadFixture(t)
+
+	// Recorded 2026-09-04 against testdata/topology/minimal.json with FNV-1a
+	// scoring. Changing them silently is the failure; changing them deliberately
+	// means every stored leaf moves.
+	//
+	// ⚠ The tenants differ so the leaves differ. At this fixture's depth of 1 the
+	// leaf is the key's FIRST byte, which is the tenant's high byte — so two
+	// entities under one tenant share a leaf and would pin the same order twice,
+	// discriminating nothing. That was the first version of this table.
+	golden := []struct {
+		tenant uint16
+		leaf   string
+		want   []string
+	}{
+		{tenant: 1, leaf: "1:00", want: []string{"srv-3-d0", "srv-1-d0", "srv-1-d1", "srv-2-d0"}},
+		{tenant: 256, leaf: "1:01", want: []string{"srv-2-d0", "srv-1-d0", "srv-1-d1", "srv-3-d0"}},
+	}
+
+	for _, tc := range golden {
+		leaf, err := addr.Descend(addr.KeyOf(addr.TenantFromUint(tc.tenant), "pinned"), m.Depth)
+		if err != nil {
+			t.Fatalf("Descend(tenant %d): %v", tc.tenant, err)
+		}
+		if got := leaf.String(); got != tc.leaf {
+			t.Fatalf("tenant %d resolved to leaf %s, want %s — the fixture or the address layout moved",
+				tc.tenant, got, tc.leaf)
+		}
+		got, err := Resolve(leaf, m)
+		if err != nil {
+			t.Fatalf("Resolve(%s): %v", tc.leaf, err)
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("Resolve(%s) = %v, want %v\n"+
+				"If this changed because the scoring function was reseeded or replaced: a seeded hash "+
+				"makes every process disagree, so one client writes a leaf where another will never look. "+
+				"If it changed deliberately, every leaf in every existing cluster has just been re-placed.",
+				tc.leaf, got, tc.want)
+		}
+	}
+}
+
+// TestScoringSpreadsAcrossTargets is the other half of what scoring owes, and
+// the half that had no check at all until 2026-09-04.
+//
+// ⚠ Determinism and distribution are separate requirements, and it is easy to
+// satisfy the first while badly failing the second — every determinism assertion
+// still passes, so nothing says a word. FNV-1a was briefly used here and its
+// avalanche is weak enough that the ranking tracked the target's NAME: over 256
+// leaves one target won 107 times and another 37, against a fair share of 64.
+// That is a 2.9× spread, and it means placement systematically favours whichever
+// servers happen to sort a certain way.
+//
+// ★ Measured 2026-09-04 against testdata/topology/minimal.json: SHA-256 gives
+// 61 / 60 / 65 / 70. The band below passes that comfortably and rejects FNV-1a
+// at both ends. The check is fully deterministic — there is no sampling and no
+// randomness — so it cannot flake.
+func TestScoringSpreadsAcrossTargets(t *testing.T) {
+	m := loadFixture(t)
+
+	// At this fixture's depth of 1 the leaf is the key's first byte, which is the
+	// tenant's high byte — so stepping the high byte walks every distinct leaf
+	// the fixture can address, and there are exactly 256 of them.
+	const leaves = 256
+	wins := map[string]int{}
+	var targets []string
+	for i := 0; i < leaves; i++ {
+		leaf, err := addr.Descend(addr.KeyOf(addr.TenantFromUint(uint16(i)<<8), "spread"), m.Depth)
+		if err != nil {
+			t.Fatalf("Descend(%d): %v", i, err)
+		}
+		got, err := Resolve(leaf, m)
+		if err != nil {
+			t.Fatalf("Resolve(%s): %v", leaf, err)
+		}
+		if targets == nil {
+			targets = got
+		}
+		wins[got[0]]++
+	}
+
+	fair := float64(leaves) / float64(len(targets))
+	low, high := fair*0.6, fair*1.6
+	for _, name := range targets {
+		got := float64(wins[name])
+		if got < low || got > high {
+			t.Errorf("%s wins %d of %d leaves; fair share is %.0f and the accepted band is %.0f–%.0f.\n"+
+				"Scoring is deterministic but badly distributed, so placement favours some targets and "+
+				"starves others. Every determinism test still passes — that is why this check exists.",
+				name, wins[name], leaves, fair, low, high)
+		}
+	}
+	if t.Failed() {
+		t.Logf("wins: %v", wins)
+	}
+}
+
+// TestScoringUsesNoPerProcessSeed asserts the property directly, so it fails at
+// the source rather than through a golden order that could also move for an
+// innocent reason.
+//
+// ⚠ It inspects this package's IMPORTS rather than its text. The first version
+// grepped the source for "maphash.MakeSeed" and immediately flagged the comment
+// explaining why that call must not be used — a guard that fires on prose gets
+// switched off, and then it protects nothing. An import list is the narrowest
+// thing that still catches the defect.
+func TestScoringUsesNoPerProcessSeed(t *testing.T) {
+	fset := token.NewFileSet()
+	pkgFiles, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse package: %v", err)
+	}
+
+	// Every one of these can only produce a value that differs between processes
+	// or between runs, which is the single thing placement scoring may not do.
+	banned := map[string]string{
+		"hash/maphash": "maphash.MakeSeed returns a NEW RANDOM seed per process, so every binary would score differently",
+		"math/rand":    "a random ordering is not an ordering two clients can both compute",
+		"math/rand/v2": "a random ordering is not an ordering two clients can both compute",
+		"crypto/rand":  "a random ordering is not an ordering two clients can both compute",
+		"time":         "a placement that depends on when it was computed cannot be recomputed later",
+	}
+
+	for _, pkg := range pkgFiles {
+		for name, file := range pkg.Files {
+			for _, spec := range file.Imports {
+				path := strings.Trim(spec.Path.Value, `"`)
+				if why, isBanned := banned[path]; isBanned {
+					t.Errorf("%s imports %q: %s.\nPlacement must be a pure function of the leaf and the "+
+						"target name. A per-process value here makes two clients place the same leaf on "+
+						"different servers, and NO in-process test can detect it.", name, path, why)
+				}
+			}
+		}
+	}
+}
+
 // TestResolveIsDeterministic checks the same leaf and map yield the same order
 // every time, so two clients agree without coordinating.
+//
+// ⚠ Within ONE process only — see TestResolveOrderIsPinnedAcrossProcesses for
+// the half this cannot reach.
 func TestResolveIsDeterministic(t *testing.T) {
 	m := loadFixture(t)
 	leaf := leafFor(t, "determinism", m.Depth)

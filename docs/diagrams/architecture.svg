@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 640" width="900" height="640" role="img" aria-label="Layered architecture: surfaces compile to one statement, routing resolves a key to a leaf, the leaf serializes writes behind a watermark, storage seals immutable coded segments.">
+  <title>sdev1 architecture</title>
+  <desc>Four layers. Every caller surface compiles to a single query statement. Routing resolves a key to a leaf by longest prefix. The leaf holds one fenced writer, a live tail and a published watermark. Storage seals immutable blocks and erasure-codes them into stripes.</desc>
+
+  <rect x="0" y="0" width="900" height="640" fill="#FBFAF7"/>
+  <rect x="0.5" y="0.5" width="899" height="639" fill="none" stroke="#DCD6C9"/>
+
+  <text x="32" y="42" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="600" fill="#26241F">How a request becomes a stored fact</text>
+  <text x="32" y="64" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#6E6759">Four layers. Each one has a single job, and the arrow between them names what crosses.</text>
+
+  <rect x="32" y="88" width="836" height="118" rx="6" fill="#F2EEE4" stroke="#C9C0AC"/>
+  <text x="48" y="110" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#8A7F66" letter-spacing="0.8">WHAT A CALLER USES</text>
+
+  <rect x="48" y="122" width="256" height="68" rx="5" fill="#FBFAF7" stroke="#C9C0AC"/>
+  <text x="62" y="143" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#26241F">The query language</text>
+  <text x="62" y="161" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#B4531F">SELECT … AS OF … TRANSACTION …</text>
+  <text x="62" y="179" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">Time is a clause, not a family of verbs.</text>
+
+  <rect x="320" y="122" width="256" height="68" rx="5" fill="#FBFAF7" stroke="#C9C0AC"/>
+  <text x="334" y="143" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#26241F">Agent tools</text>
+  <text x="334" y="161" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#B4531F">read_entity · find_resembling</text>
+  <text x="334" y="179" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">The tenant comes from the session.</text>
+
+  <rect x="592" y="122" width="260" height="68" rx="5" fill="#FBFAF7" stroke="#C9C0AC"/>
+  <text x="606" y="143" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#26241F">The filesystem</text>
+  <text x="606" y="161" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" fill="#B4531F">/.at/&lt;t&gt;/e/&lt;entity&gt;/&lt;attr&gt;</text>
+  <text x="606" y="179" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">Read-only. A path is a query.</text>
+
+  <line x1="450" y1="206" x2="450" y2="242" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M450 249 l-5.5 -10 h11 z" fill="#B4531F"/>
+  <text x="464" y="230" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#B4531F">every surface compiles to ONE statement — none does its own reads</text>
+
+  <rect x="32" y="252" width="836" height="86" rx="6" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <text x="48" y="274" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#4E7A6C" letter-spacing="0.8">WHERE IT GOES</text>
+  <text x="48" y="298" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#26241F">Longest-prefix routing over trie prefixes</text>
+  <text x="48" y="319" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#4E6B61">A table bounded by fan-out and live depth, never by data volume. A stale route is a REDIRECT carrying a newer epoch — self-healing rather than a wrong answer.</text>
+
+  <line x1="450" y1="338" x2="450" y2="374" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M450 381 l-5.5 -10 h11 z" fill="#B4531F"/>
+  <text x="464" y="362" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#B4531F">key → leaf</text>
+
+  <rect x="32" y="384" width="836" height="118" rx="6" fill="#F6E9E2" stroke="#DDB49C"/>
+  <text x="48" y="406" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#A26A45" letter-spacing="0.8">THE LEAF — ONE WRITER, MANY READERS, NO LOCKS BETWEEN THEM</text>
+
+  <rect x="48" y="418" width="256" height="68" rx="5" fill="#FBFAF7" stroke="#DDB49C"/>
+  <text x="62" y="439" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#26241F">Fenced lease</text>
+  <text x="62" y="458" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">The epoch travels with the write and</text>
+  <text x="62" y="475" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">is refused at the resource.</text>
+
+  <rect x="320" y="418" width="256" height="68" rx="5" fill="#FBFAF7" stroke="#DDB49C"/>
+  <text x="334" y="439" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#26241F">Live tail + watermark</text>
+  <text x="334" y="458" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">Published once the entry is whole, so</text>
+  <text x="334" y="475" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">a partial write is unreachable, not locked.</text>
+
+  <rect x="592" y="418" width="260" height="68" rx="5" fill="#FBFAF7" stroke="#DDB49C"/>
+  <text x="606" y="439" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#26241F">Admission control</text>
+  <text x="606" y="458" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">Separate read and write budgets, so a</text>
+  <text x="606" y="475" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">read burst can never stop the writes.</text>
+
+  <line x1="450" y1="502" x2="450" y2="538" stroke="#B4531F" stroke-width="1.6"/>
+  <path d="M450 545 l-5.5 -10 h11 z" fill="#B4531F"/>
+  <text x="464" y="526" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#B4531F">sealed — and never modified again</text>
+
+  <rect x="32" y="548" width="836" height="72" rx="6" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <text x="48" y="570" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#6F6790" letter-spacing="0.8">STORAGE — IMMUTABLE ONCE SEALED</text>
+  <text x="48" y="592" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#26241F">block: compress → encrypt → erasure-code &#160;&#160;·&#160;&#160; stripe: k data + m parity, one fragment per failure domain</text>
+  <text x="48" y="610" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#5F5A72">Every block records the codec and cipher it was written with, so changing a setting reinterprets nothing already stored.</text>
+</svg>

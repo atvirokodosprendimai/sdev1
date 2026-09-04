@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" width="900" height="560" role="img" aria-label="Three failure dispositions and no fourth: recovers, unrecoverable by design, and unrecoverable and open.">
+  <title>How it fails — three dispositions and no fourth</title>
+  <desc>Every catalogued failure is one of three things: it recovers, it is unrecoverable by design and the system says so, or it is unrecoverable and nobody has fixed it. There is deliberately no fourth category such as under investigation.</desc>
+
+  <rect x="0" y="0" width="900" height="560" fill="#FBFAF7"/>
+  <rect x="0.5" y="0.5" width="899" height="559" fill="none" stroke="#DCD6C9"/>
+
+  <text x="32" y="42" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="600" fill="#26241F">How it fails — three dispositions, and no fourth</text>
+  <text x="32" y="64" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#6E6759">A fourth category is how “we’re looking into it” enters a catalogue and stops anything being countable.</text>
+
+  <!-- Column 1 -->
+  <rect x="32" y="92" width="270" height="368" rx="6" fill="#E9EFEC" stroke="#A9C4B9"/>
+  <rect x="32" y="92" width="270" height="34" rx="6" fill="#2F6B5E"/>
+  <rect x="32" y="114" width="270" height="12" fill="#2F6B5E"/>
+  <text x="167" y="114" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FBFAF7" letter-spacing="0.6">RECOVERS</text>
+
+  <text x="48" y="152" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#26241F">The writer for a leaf dies</text>
+  <text x="48" y="170" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">A new grant issues at a higher epoch</text>
+  <text x="48" y="184" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">and never waits for the old holder. If</text>
+  <text x="48" y="198" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">it wakes up, its writes are refused.</text>
+
+  <text x="48" y="228" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#26241F">Fragments are lost or rotten</text>
+  <text x="48" y="246" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">Up to m of them: verify the rest and</text>
+  <text x="48" y="260" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">rebuild exactly. Corruption becomes</text>
+  <text x="48" y="274" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">an erasure rather than wrong bytes.</text>
+
+  <text x="48" y="304" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#26241F">A node saturates</text>
+  <text x="48" y="322" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">It withdraws from the queue, so work</text>
+  <text x="48" y="336" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">stops arriving. A hysteresis band keeps</text>
+  <text x="48" y="350" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">it from oscillating at the threshold.</text>
+
+  <text x="48" y="380" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#26241F">A route goes stale</text>
+  <text x="48" y="398" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">The answer is a redirect carrying a</text>
+  <text x="48" y="412" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">newer epoch, bounded by a hop budget.</text>
+  <text x="48" y="426" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#4E6B61">The cache heals itself; it never lies.</text>
+
+  <text x="48" y="450" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-style="italic" fill="#6E8B82">A partial write is unreachable, never half-read.</text>
+
+  <!-- Column 2 -->
+  <rect x="316" y="92" width="270" height="368" rx="6" fill="#EDEAF2" stroke="#B9B2CC"/>
+  <rect x="316" y="92" width="270" height="34" rx="6" fill="#6F6790"/>
+  <rect x="316" y="114" width="270" height="12" fill="#6F6790"/>
+  <text x="451" y="114" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FBFAF7" letter-spacing="0.6">UNRECOVERABLE BY DESIGN</text>
+
+  <text x="332" y="152" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#26241F">More than m fragments are gone</text>
+  <text x="332" y="170" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">The block is destroyed. The read fails</text>
+  <text x="332" y="184" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">with a named error and returns nothing.</text>
+  <text x="332" y="204" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#6F6790">A system that answered anyway would</text>
+  <text x="332" y="218" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#6F6790">be inventing data.</text>
+
+  <text x="332" y="250" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#26241F">A subject’s key was destroyed</text>
+  <text x="332" y="268" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">That is erasure working, not failing. It</text>
+  <text x="332" y="282" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">reaches coded stripes, offline replicas</text>
+  <text x="332" y="296" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">and shelved backups without visiting</text>
+  <text x="332" y="310" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">any of them.</text>
+  <text x="332" y="330" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#6F6790">A backup holding the keystore beside</text>
+  <text x="332" y="344" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#6F6790">the data silently undoes every erasure.</text>
+
+  <text x="332" y="376" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#26241F">Every memory replica dies at once</text>
+  <text x="332" y="394" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">Unflushed acknowledged writes are lost.</text>
+  <text x="332" y="408" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">This is why the replicas are required to</text>
+  <text x="332" y="422" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">sit in distinct POWER domains rather</text>
+  <text x="332" y="436" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#5F5A72">than merely permitted to.</text>
+
+  <!-- Column 3 -->
+  <rect x="600" y="92" width="268" height="368" rx="6" fill="#F5E4E4" stroke="#C08A8A"/>
+  <rect x="600" y="92" width="268" height="34" rx="6" fill="#9C3030"/>
+  <rect x="600" y="114" width="268" height="12" fill="#9C3030"/>
+  <text x="734" y="114" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FBFAF7" letter-spacing="0.6">UNRECOVERABLE AND OPEN</text>
+
+  <text x="734" y="212" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="48" font-weight="600" fill="#9C3030">0</text>
+  <text x="734" y="238" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#9C3030">open entries today</text>
+
+  <text x="616" y="278" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">This column is the point of the catalogue.</text>
+  <text x="616" y="296" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">It is the half an operator actually needs</text>
+  <text x="616" y="312" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">and the half nobody writes down.</text>
+
+  <text x="616" y="344" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">It held one entry until fencing landed:</text>
+  <text x="616" y="360" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">a leaf whose writer died was readable</text>
+  <text x="616" y="376" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">forever and writable never. It was found</text>
+  <text x="616" y="392" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">by injecting the fault, written down</text>
+  <text x="616" y="408" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">before it was fixed, and closed by the</text>
+  <text x="616" y="424" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#7A3A3A">same fault passing.</text>
+
+  <text x="616" y="450" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-style="italic" fill="#A05555">The closed entry stays, rather than being deleted.</text>
+
+  <text x="32" y="492" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#26241F">Faults are injected from a seed, so every failure is reproducible.</text>
+  <text x="32" y="512" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">An unreproducible failure is a report rather than a bug — you cannot bisect it, you cannot prove a fix, and you cannot tell a regression from bad luck. The same seed</text>
+  <text x="32" y="528" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6E6759">always yields the same schedule of faults, in the same order, at the same points.</text>
+  <text x="32" y="548" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8A7F66">The living catalogue is docs/adr/FAILURES.md. If it and this drawing disagree, the catalogue is right.</text>
+</svg>
