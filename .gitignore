@@ -8,6 +8,13 @@
 *.so
 *.dylib
 
+# Built command binaries. `go build ./cmd/<name>/...` drops the binary in the
+# working directory, so an acceptance fence that builds a command litters the
+# repository root — and one was committed on 2026-09-04 before this line existed.
+# Prefer `go build -o /dev/null` or `go run` in a fence; this is the backstop.
+/sdev1-addr
+/sdev1-ql
+
 # Test binary, built with `go test -c`
 *.test
 

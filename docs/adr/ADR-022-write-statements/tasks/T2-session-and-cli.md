@@ -51,10 +51,15 @@ quietly becoming the specification.
 set -o pipefail
 go test ./internal/core/session/... -race -run 'TestAssertThenSelectReadsItBack|TestAReadAtAPastInstant|TestTheSessionAssignsTransactionTime|TestAssertThenSearchFindsIt|TestRetractedFactIsNotReturned|TestUnsupportedStatementIsNamed' -count=1 2>&1 | tee /tmp/adr022-t2a.out \
   && ! grep -qE "no tests to run|matched no packages|^FAIL|^--- FAIL|DATA RACE" /tmp/adr022-t2a.out \
-  && go build ./cmd/sdev1-ql/... \
+  && go build -o /dev/null ./cmd/sdev1-ql/... \
   && go run ./cmd/sdev1-ql --statements "ASSERT planet-7 mass = 5972 VALID FROM 100" --statements "SELECT * FROM planet-7" 2>&1 | tee /tmp/adr022-t2b.out \
   && grep -q "mass" /tmp/adr022-t2b.out
 ```
+
+⚠ `-o /dev/null` is not decoration. `go build ./cmd/<name>/...` writes the binary
+into the working directory, so a fence that builds a command litters the
+repository root — and on 2026-09-04 one was committed that way before anybody
+noticed. `.gitignore` carries the backstop; this is the fix.
 
 The last two segments build and RUN the binary, then check its output carries the
 attribute that was written. A binary that compiles and does nothing would
@@ -90,6 +95,10 @@ otherwise pass.
 - 2026-09-04 · 97b0636* · mutant killed · exit 1 · `internal/core/session/session.go` · stops excluding datoms the snapshot cannot see, so every read returns the latest value whatever instant it asked about. Time travel becomes a silent no-op: AS OF still parses and still resolves, and the answer is identical either way · acceptance-sha256:96ca63369ba5149d521ee9a6ee4f728b7a35962c660d62101c45cf266be83bc3 · covers:a read at a past instant not seeing a later write
 - 2026-09-04 · 97b0636* · mutant killed · exit 1 · `internal/core/session/session.go` · lets a statement VALID FROM clause move the TRANSACTION identifier — the exact forgery the language was shaped to make unsayable, reintroduced one layer down where nothing about the grammar would reveal it · acceptance-sha256:96ca63369ba5149d521ee9a6ee4f728b7a35962c660d62101c45cf266be83bc3 · covers:the session assigning transaction time rather than the caller
 - 2026-09-04 · 97b0636* · mutant killed · exit 1 · `internal/core/session/session.go` · stops indexing on the write path, so SEARCH finds nothing that arrived through ASSERT. A test that populated the index itself would still pass, which is exactly why the test only ever touches the index through the two statements · acceptance-sha256:96ca63369ba5149d521ee9a6ee4f728b7a35962c660d62101c45cf266be83bc3 · covers:a search finding a fact that was asserted rather than indexed by hand
+- 2026-09-04 · dba7be4* · mutant killed · exit 1 · `internal/core/session/session.go` · drops every write to an entity after its first, so the statement reports success and the fact is simply not there. The write path still returns a datom, so nothing looks wrong until somebody reads it back · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:a written fact being readable back through the language
+- 2026-09-04 · dba7be4* · mutant killed · exit 1 · `internal/core/session/session.go` · stops excluding datoms the snapshot cannot see, so every read returns the latest value whatever instant it asked about. Time travel becomes a silent no-op: AS OF still parses and still resolves, and the answer is identical either way · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:a read at a past instant not seeing a later write
+- 2026-09-04 · dba7be4* · mutant killed · exit 1 · `internal/core/session/session.go` · lets a statement VALID FROM clause move the TRANSACTION identifier — the exact forgery the language was shaped to make unsayable, reintroduced one layer down where nothing about the grammar would reveal it · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:the session assigning transaction time rather than the caller
+- 2026-09-04 · dba7be4* · mutant killed · exit 1 · `internal/core/session/session.go` · stops indexing on the write path, so SEARCH finds nothing that arrived through ASSERT. A test that populated the index itself would still pass, which is exactly why the test only ever touches the index through the two statements · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · covers:a search finding a fact that was asserted rather than indexed by hand
 
 ## Invariants
 
@@ -125,3 +134,8 @@ specifications and the one nobody wrote down is the one people run.
 - 2026-09-04 · 97b0636* · exit 0 · `set -o pipefail …` · acceptance-sha256:96ca63369ba5149d521ee9a6ee4f728b7a35962c660d62101c45cf266be83bc3 · ms:2573
 - 2026-09-04 · 97b0636* · exit 0 · `set -o pipefail …` · acceptance-sha256:96ca63369ba5149d521ee9a6ee4f728b7a35962c660d62101c45cf266be83bc3 · ms:2589
 - 2026-09-04 · 97b0636* · exit 0 · `set -o pipefail …` · acceptance-sha256:96ca63369ba5149d521ee9a6ee4f728b7a35962c660d62101c45cf266be83bc3 · ms:2549
+- 2026-09-04 · dba7be4* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:3072
+- 2026-09-04 · dba7be4* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2936
+- 2026-09-04 · dba7be4* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2896
+- 2026-09-04 · dba7be4* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2859
+- 2026-09-04 · dba7be4* · exit 0 · `set -o pipefail …` · acceptance-sha256:ff0999d85aad0970c822a832e84d3618b0a48a2ebefbe32a0b1a59411f82856e · ms:2862
