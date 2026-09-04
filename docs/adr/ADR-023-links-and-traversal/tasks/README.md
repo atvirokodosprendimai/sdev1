@@ -20,14 +20,20 @@ Two tasks, sequential.
 | ID | Title | Status | Covers | Acceptance |
 |----|-------|--------|--------|------------|
 | T1 | A typed reference, and a walk that resolves at one instant | done | — | `go test ./internal/core/link/... -race -run 'TestEveryHopResolvesAtOneInstant\|TestAReferenceIsAStoredKind\|TestACycleIsReported\|TestAWalkRefusesAnUnboundedDepth\|TestAMissingRetractedAndErased\|TestWalkRespectsItsDepthBound'` then the temporal and ports suites |
-| T2 | Write a link, and walk one, from the language | pending | — | `go test ./internal/core/ql/... -race -run 'TestTraverseCarriesOneTimeClause\|TestAReferenceLiteralIsNotAString\|TestQueryLanguageDocIsComplete\|TestPublishedExamplesParse'` |
+| T2 | Write a link, and walk one, from the language | done | — | `go test ./internal/core/ql/... ./internal/core/session/... -race -run 'TestTraverseCarriesOneTimeClause\|TestTraverseRequiresADepth\|TestAReferenceLiteralIsNotAString\|TestTraverseWalksLinksAtOneInstant\|TestOnlyReferencesAreFollowed\|TestQueryLanguageDocIsComplete\|TestPublishedExamplesParse'` then the link and ports suites, then RUN `cmd/sdev1-ql` |
 
 Status: `pending` | `partial` | `blocked` | `done`.
 
-⚠ **T2 is `pending` on the storage engine** (`BACKLOG.md` §12). A traversal is a
-read per hop per level, and the in-memory session has no notion of following a
-reference across entities at scale. ★What a reference IS and what walking one
-MEANS are settled by T1 and proved by mutation with no storage anywhere.
+★ **Both tasks are done, and links work end to end** — `ASSERT a orbits = ->b`
+writes one, `TRAVERSE a DEPTH 2 AS OF 150` walks it as the graph stood then.
+
+⚠ **T2 was written as `pending` on the storage engine, and that was wrong.** A
+reference literal and a `TRAVERSE` statement are pure parsing, and the session
+already held datoms to walk. The identical over-deferral was made for `SEARCH`
+and corrected the same way — recorded because it is easy to repeat: *"this waits
+on the storage engine"* is true of persistence and rarely true of meaning.
+
+What genuinely remains is durability (`BACKLOG.md` §12) and inbound edges (§29).
 
 ## Contract Coupling
 

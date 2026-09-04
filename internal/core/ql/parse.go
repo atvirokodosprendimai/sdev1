@@ -99,8 +99,10 @@ func (p *parser) statement() (Statement, error) {
 		return p.parseSearch()
 	case t.Kind == KindKeyword && (t.Text == "ASSERT" || t.Text == "RETRACT"):
 		return p.parseWrite()
+	case t.Kind == KindKeyword && t.Text == "TRAVERSE":
+		return p.parseTraverse()
 	default:
-		return nil, p.errorAt(t, "SELECT, MATCH, SEARCH, ASSERT or RETRACT")
+		return nil, p.errorAt(t, "SELECT, MATCH, SEARCH, ASSERT, RETRACT or TRAVERSE")
 	}
 }
 

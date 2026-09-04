@@ -98,8 +98,8 @@ engine.**
 | `ASSERT … VALID FROM … TO …` / `RETRACT …` | **parses + runs** | Creates and retracts facts in the in-memory session. Valid time is yours; **transaction time is never** — stating it is a parse error. |
 | Reading a fact back, at any instant | **runs** | `SELECT … AS OF …` against the session, through the real visibility predicate. |
 | **`INSERT` / `UPDATE` / `DELETE`** | ❌ **will never exist** | The store appends. An update is an assertion, a delete a retraction, an erasure a destroyed key. |
-| Links — typed references between entities | **model done**, not in the language | A value carries a *kind*: literal or reference. `link.Walk` traverses them correctly. ⚠ Writing one in the QL is `BACKLOG.md` §29. |
-| Taxonomies / hierarchies, at a past instant | **model done**, not in the language | Free once links are datoms: a hierarchy is links, links are bitemporal, so "what did this look like in March" is a traversal at an instant. ⚠ **Every hop resolves at one instant** — otherwise you get a tree that never existed. |
+| Links — `ASSERT a orbits = ->b` | **parses + runs** | A value prefixed `->` is a reference, stored as a kind and never inferred from bytes. |
+| Taxonomies at a past instant — `TRAVERSE a DEPTH 2 AS OF t` | **parses + runs** | Free once links are datoms. ⚠ **Every hop resolves at one instant** — otherwise you get a tree that never existed. |
 | **Joins, `AND`/`OR`, `ORDER BY`, `COUNT`** | ❌ | See the query guide's boundary table for which are decisions and which are gaps. |
 | Storing anything on a disk | ❌ | No storage engine — the session is in memory and loses everything on exit. This is the blocker under almost everything else. |
 | Reading a stored fact back | ❌ | No query evaluator. |
@@ -384,10 +384,18 @@ ASSERT planet-7 class = 'terrestrial' VALID FROM 100 TO 200
 RETRACT planet-7 class = 'terrestrial' VALID FROM 500
 ```
 
-⚠ **Links have a model but no syntax yet.** A value carries a *kind* — literal or
-reference — and `link.Walk` traverses references correctly, including the rule
-that makes historical traversal trustworthy. Saying either in the language is
-`BACKLOG.md` §29.
+```sql
+-- Links. `->` makes a value a reference to another entity, not text.
+ASSERT planet-7 orbits = ->star-1
+ASSERT planet-7 note = 'star-1'
+
+-- Walk them, as the graph stood at an instant.
+TRAVERSE planet-7 DEPTH 2
+TRAVERSE planet-7 DEPTH 2 AS OF 1700000000
+```
+
+The two `ASSERT`s above write the same nine characters and mean different things.
+⚠ **The kind is how it was written, never a guess from the bytes.**
 
 Run any of the above with `cmd/sdev1-ql` — see the [quick start](#quick-start--create-records-read-them-back-search-them).
 
@@ -559,8 +567,30 @@ Three more rules, each with a reason:
   would let a caller discover whether a subject was erased by walking to it,
   which is the oracle crypto-shredding exists to remove.
 
-The model and the walk are built. Writing a link or a traversal in the language
-is `BACKLOG.md` §29.
+All of it runs today:
+
+```bash
+go run ./cmd/sdev1-ql --clock 1000 \
+  --statements "ASSERT planet-7 orbits = ->star-1 VALID FROM 100" \
+  --statements "ASSERT star-1 within = ->cluster-old VALID FROM 100 TO 200" \
+  --statements "ASSERT star-1 within = ->cluster-new VALID FROM 200" \
+  --statements "TRAVERSE planet-7 DEPTH 2 AS OF 150" \
+  --statements "TRAVERSE planet-7 DEPTH 2 AS OF 250"
+```
+
+```
+TRAVERSE planet-7 DEPTH 2 AS OF 150
+  star-1 (depth 1)
+    cluster-old (depth 2)
+
+TRAVERSE planet-7 DEPTH 2 AS OF 250
+  star-1 (depth 1)
+    cluster-new (depth 2)
+```
+
+The same walk, two instants, two hierarchies that each genuinely existed. What
+remains is durability (`BACKLOG.md` §12) and inbound edges — "what points at
+this" — which are a different index (§29).
 
 ## How it fails, and how it recovers
 

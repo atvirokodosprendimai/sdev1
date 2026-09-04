@@ -175,6 +175,70 @@ func TestRetractedFactIsNotReturned(t *testing.T) {
 	}
 }
 
+// TestTraverseWalksLinksAtOneInstant is the session-level check that a hierarchy
+// can be walked as it stood at an instant.
+//
+// ⚠ The graph is RESHAPED between the two instants: planet-7 orbits star-1 from
+// the start, and star-1's own link changes. A walk at the earlier instant must
+// return the earlier shape, not a mixture.
+func TestTraverseWalksLinksAtOneInstant(t *testing.T) {
+	s, _ := newTestSession()
+
+	mustRun(t, s, `ASSERT planet-7 orbits = ->star-1 VALID FROM 100`)
+	mustRun(t, s, `ASSERT star-1 within = ->cluster-old VALID FROM 100 TO 200`)
+	mustRun(t, s, `ASSERT star-1 within = ->cluster-new VALID FROM 200`)
+
+	early := mustRun(t, s, `TRAVERSE planet-7 DEPTH 2 AS OF 150`)
+	names := reached(early)
+	if len(names) != 2 || names[0] != "star-1" || names[1] != "cluster-old" {
+		t.Fatalf("a walk at 150 reached %v, want [star-1 cluster-old] — an answer containing "+
+			"cluster-new is a tree assembled from two instants", names)
+	}
+
+	late := mustRun(t, s, `TRAVERSE planet-7 DEPTH 2 AS OF 250`)
+	if n := reached(late); len(n) != 2 || n[1] != "cluster-new" {
+		t.Fatalf("a walk at 250 reached %v, want the later shape", n)
+	}
+
+	// The depth bound applies through the language too.
+	shallow := mustRun(t, s, `TRAVERSE planet-7 DEPTH 1 AS OF 150`)
+	if n := reached(shallow); len(n) != 1 || n[0] != "star-1" {
+		t.Fatalf("DEPTH 1 reached %v, want [star-1]", n)
+	}
+}
+
+// TestOnlyReferencesAreFollowed checks a literal that spells an entity name is
+// not an edge.
+func TestOnlyReferencesAreFollowed(t *testing.T) {
+	s, _ := newTestSession()
+
+	mustRun(t, s, `ASSERT planet-7 note = 'star-1'`)   // a literal
+	mustRun(t, s, `ASSERT planet-7 orbits = ->star-1`) // a reference
+	mustRun(t, s, `ASSERT star-1 name = 'Sol'`)
+
+	got := mustRun(t, s, `TRAVERSE planet-7 DEPTH 1`)
+	if n := reached(got); len(n) != 1 || n[0] != "star-1" {
+		t.Fatalf("walked to %v, want [star-1] once — a literal spelling an entity name must not "+
+			"be followed, or every identifier-looking value becomes an accidental edge", n)
+	}
+
+	// A retracted link stops being followed, while remaining a datom.
+	mustRun(t, s, `RETRACT planet-7 orbits = ->star-1`)
+	after := mustRun(t, s, `TRAVERSE planet-7 DEPTH 1`)
+	if n := reached(after); len(n) != 0 {
+		t.Fatalf("a retracted link was still followed: %v", n)
+	}
+}
+
+// reached renders a traversal result's entities in order.
+func reached(r Result) []string {
+	out := make([]string, 0, len(r.Reached))
+	for _, p := range r.Reached {
+		out = append(out, p.Entity)
+	}
+	return out
+}
+
 // TestUnsupportedStatementIsNamed checks an unimplemented statement says so.
 func TestUnsupportedStatementIsNamed(t *testing.T) {
 	s, _ := newTestSession()

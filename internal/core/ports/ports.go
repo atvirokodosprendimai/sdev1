@@ -22,6 +22,20 @@ type Datom struct {
 	Valid     temporal.Interval
 	TxID      tx.TxID
 	Assert    bool
+
+	// IsReference says the value names another ENTITY rather than being data.
+	//
+	// ⚠ Stored, never inferred. "planet-9" as a name and "planet-9" as a link
+	// are the same nine bytes; only this field tells them apart. Guessing from
+	// the shape of the value would make every identifier-looking string an
+	// accidental edge, and the graph would change whenever unrelated data did.
+	//
+	// It is a field on the datom rather than a separate edge record for the same
+	// reason `Assert` is: a link is not a new kind of thing, so it inherits
+	// bitemporality, retraction and the transaction boundary without any of them
+	// being decided again. The standalone typed form is
+	// [github.com/atvirokodosprendimai/sdev1/internal/core/link.Value].
+	IsReference bool
 }
 
 // Snapshot is the pair of values a read is evaluated at: a transaction

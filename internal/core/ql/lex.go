@@ -58,7 +58,18 @@ var keywords = map[string]bool{
 	// Added for the write statements. Quoting already existed by the time these
 	// arrived, so they cost nothing — which is the earlier decision paying off.
 	"ASSERT": true, "RETRACT": true, "VALID": true, "TO": true,
+
+	// Added for traversal.
+	"TRAVERSE": true, "DEPTH": true,
 }
+
+// RefMarker precedes an entity name to say the value is a LINK rather than text.
+//
+// ★ `->planet-9` is a reference; `'->planet-9'` is the nine-character string.
+// The two are different token kinds, so no value can become an accidental edge
+// however it is spelled — which is the same reason the kind is stored on a datom
+// rather than inferred from its bytes.
+const RefMarker = "->"
 
 // IdentQuote surrounds an identifier that would otherwise lex as a keyword.
 //
@@ -223,7 +234,11 @@ func (l *Lexer) lexPunct(start int, r rune, width int) Token {
 	if l.pos < len(l.src) {
 		next, nextWidth := utf8.DecodeRuneInString(l.src[l.pos:])
 		pair := string(r) + string(next)
-		if pair == ">=" || pair == "<=" || pair == "!=" || pair == "==" {
+		// ★ `->` is the reference marker. It is unambiguous against a negative
+		// number because a bare `-` only starts a number when a DIGIT follows,
+		// and unambiguous against a string because a quoted value is a different
+		// token kind entirely — so `->x` is a link and `'->x'` is the text.
+		if pair == ">=" || pair == "<=" || pair == "!=" || pair == "==" || pair == RefMarker {
 			l.pos += nextWidth
 			return Token{Kind: KindPunct, Text: pair, Pos: start}
 		}

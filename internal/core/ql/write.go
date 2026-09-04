@@ -64,6 +64,12 @@ type Write struct {
 	// ValueIsNumber records whether it was written as a number, so nothing has
 	// to guess later.
 	ValueIsNumber bool
+	// ValueIsReference records that the value names another entity.
+	//
+	// ⚠ Stored, never inferred. "planet-9" as a name and as a link are the same
+	// nine bytes; only the way it was WRITTEN tells them apart, and guessing
+	// from shape would make every identifier-looking string an accidental edge.
+	ValueIsReference bool
 	// From is the start of validity from `VALID FROM t`, or nil when omitted.
 	From *int64
 	// To is the end from `TO u`, or nil for an open interval.
@@ -126,6 +132,18 @@ func (p *parser) parseWrite() (Statement, error) {
 	}
 	p.next()
 
+	// A leading `->` makes the value a REFERENCE. It is consumed before the
+	// value token so that the entity name after it is an ordinary identifier.
+	if t := p.peek(); t.Kind == KindPunct && t.Text == RefMarker {
+		p.next()
+		target, err := p.expectIdent("an entity name after " + RefMarker)
+		if err != nil {
+			return nil, err
+		}
+		w.Value, w.ValueIsReference = target, true
+		return p.finishWrite(w)
+	}
+
 	value := p.peek()
 	switch value.Kind {
 	case KindNumber:
@@ -137,6 +155,16 @@ func (p *parser) parseWrite() (Statement, error) {
 	}
 	p.next()
 
+	return p.finishWrite(w)
+}
+
+// finishWrite reads the optional validity clause and refuses a transaction
+// qualifier.
+//
+// ★ It is shared by the literal and reference paths so the two cannot diverge —
+// a reference that quietly accepted a TRANSACTION clause would be the same
+// forgery through a different spelling.
+func (p *parser) finishWrite(w *Write) (Statement, error) {
 	if p.acceptKeyword("VALID") {
 		if err := p.expectKeyword("FROM"); err != nil {
 			return nil, err

@@ -152,6 +152,11 @@ func report(r session.Result) {
 		fmt.Printf("  valid   %s\n", r.Wrote.Valid)
 		fmt.Printf("  txn     %s\n", r.Wrote.TxID)
 
+	case r.Reached != nil:
+		for _, p := range r.Reached {
+			fmt.Printf("  %s%s (depth %d)\n", strings.Repeat("  ", p.Depth-1), p.Entity, p.Depth)
+		}
+
 	case r.Hits != nil || r.Facets != nil:
 		if len(r.Hits) == 0 {
 			fmt.Println("  no hits")

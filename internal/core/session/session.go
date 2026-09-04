@@ -8,6 +8,7 @@ import (
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/crypt"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/link"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ql"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/search"
@@ -67,6 +68,8 @@ type Result struct {
 	Hits []search.Scored
 	// Facets are the breakdowns a SEARCH asked for.
 	Facets []search.FacetResult
+	// Reached is what a TRAVERSE walked to, nearest the root first.
+	Reached []link.Path
 }
 
 // Row is one visible attribute of one entity.
@@ -91,6 +94,8 @@ func (s *Session) Run(src string) (Result, error) {
 		return s.selectFrom(src, v)
 	case *ql.Search:
 		return s.search(src, v)
+	case *ql.Traverse:
+		return s.traverse(src, v)
 	default:
 		return Result{}, fmt.Errorf("%w: %T needs a similarity metric chosen against a corpus", ErrUnsupported, stmt)
 	}
@@ -111,6 +116,8 @@ func (s *Session) write(src string, w *ql.Write) (Result, error) {
 		Valid:     w.Interval(id.HLC.Wall),
 		TxID:      id,
 		Assert:    w.Op == ql.OpAssert,
+		// Carried through from how it was WRITTEN, never re-derived from bytes.
+		IsReference: w.ValueIsReference,
 	}
 	s.datoms[w.Entity] = append(s.datoms[w.Entity], datom)
 	if !contains(s.written, w.Entity) {
@@ -119,7 +126,12 @@ func (s *Session) write(src string, w *ql.Write) (Result, error) {
 
 	// Index on the WRITE path, so a search finds facts that were asserted rather
 	// than facts something indexed separately.
-	if datom.Assert {
+	//
+	// ⚠ A REFERENCE is not indexed as text. Its bytes are an entity name, not
+	// prose, and full-text matching them would answer "what links to this" with
+	// something that only looks like an answer — inbound edges are a different
+	// index and a deferred decision, not a side effect of the analyzer.
+	if datom.Assert && !datom.IsReference {
 		for _, term := range search.Analyze(w.Value) {
 			posting := search.Posting{Subject: w.Entity, Term: term, From: id}
 			sealed, err := search.Seal(s.keys, posting)
@@ -199,6 +211,62 @@ func (s *Session) search(src string, q *ql.Search) (Result, error) {
 		return Result{}, err
 	}
 	return Result{Statement: src, Hits: out.Hits, Facets: out.Facets}, nil
+}
+
+// traverse walks the links out of an entity, at ONE instant.
+//
+// ⚠ The snapshot is resolved once, here, and `link.Walk` hands that same value to
+// every hop. Resolving per hop would assemble a tree out of parts that each
+// existed and that as a whole never did.
+func (s *Session) traverse(src string, t *ql.Traverse) (Result, error) {
+	at := t.Time.Resolve(s.now())
+
+	reached, err := link.Walk(&datomLinks{session: s}, t.Root, at, t.Depth)
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Statement: src, Reached: reached}, nil
+}
+
+// datomLinks resolves an entity's outbound references from the session's datoms.
+//
+// ★ It exists so `link.Walk` is handed a resolver rather than reaching into
+// storage itself — which is what keeps the same-instant rule testable and keeps
+// the walk unaware of where datoms live.
+type datomLinks struct{ session *Session }
+
+func (d *datomLinks) References(entity string, at temporal.Query) ([]string, error) {
+	// Latest visible datom per attribute, exactly as a SELECT would see it.
+	latest := make(map[string]ports.Datom)
+	for _, dat := range d.session.datoms[entity] {
+		if !temporal.Visible(dat.Valid.From, dat.Valid.To, dat.TxID, at) {
+			continue
+		}
+		if prior, seen := latest[dat.Attribute]; seen && dat.TxID.Compare(prior.TxID) <= 0 {
+			continue
+		}
+		latest[dat.Attribute] = dat
+	}
+
+	names := make([]string, 0, len(latest))
+	for name := range latest {
+		names = append(names, name)
+	}
+	// Sorted so a walk is reproducible; a map would order hops differently on
+	// every run, which is the defect placement shipped.
+	sort.Strings(names)
+
+	var out []string
+	for _, name := range names {
+		dat := latest[name]
+		// ⚠ A retraction suppresses the link, and only a REFERENCE is followed.
+		// A literal whose bytes spell an entity name is not an edge.
+		if !dat.Assert || !dat.IsReference {
+			continue
+		}
+		out = append(out, string(dat.Value))
+	}
+	return out, nil
 }
 
 // valuesOf collects the current value of one attribute per entity, for faceting.

@@ -61,6 +61,7 @@ There are exactly three, and `Parse` accepts nothing else:
 | Find entities by their text | `SEARCH` | `*Search` |
 | State that a fact held | `ASSERT` | `*Write` |
 | State that a fact stopped holding | `RETRACT` | `*Write` |
+| Walk the links out of an entity | `TRAVERSE` | `*Traverse` |
 
 Anything else is refused at the first token with `expected SELECT or MATCH`. A
 statement must also be *complete* — trailing tokens are refused with
@@ -325,6 +326,41 @@ accident.
 The entity is the transaction boundary, so a write names exactly one — a second
 entity does not parse, rather than failing at commit.
 
+## Links and traversal
+
+A value prefixed with `->` is a **reference** to another entity, not text:
+
+```sql
+ASSERT planet-7 orbits = ->star-1
+ASSERT planet-7 note = 'star-1'
+TRAVERSE planet-7 DEPTH 3
+TRAVERSE planet-7 DEPTH 3 AS OF 1700000000
+```
+
+The first two write the same nine characters and mean different things. ⚠ **The
+kind is how it was WRITTEN, never a guess from the bytes** — inferring would make
+every value that spells an entity name an accidental edge, and the graph would
+change whenever unrelated data did.
+
+A link is an ordinary datom, so it is bitemporal, retractable and bound to one
+entity without any of that being decided again. ★ **Which makes hierarchies
+free**: a taxonomy is links, links are datoms, datoms are bitemporal, so "what
+did this look like in March" is `TRAVERSE … AS OF …` rather than a feature.
+
+⚠ **`DEPTH` is required.** An unbounded walk over a graph the caller does not
+control is a scan they did not ask for. `ErrNoDepth` says so.
+
+⚠ **A traversal carries ONE time clause, for the whole walk, and there is no
+per-hop qualifier.** A shape query has one per leg and the symmetry is tempting —
+but a per-hop clause would let you *ask* for March's root with today's children:
+a tree in which every node is real, every edge existed at some point, and the
+shape was never true at any moment. Making that sayable would turn a defect into
+a feature, so it does not parse.
+
+A cycle is reported rather than truncated, and a target that is missing,
+retracted or **erased** is one indistinguishable answer — otherwise walking to an
+entity would tell you whether it had been erased.
+
 ## Search and facets
 
 ```sql
@@ -392,11 +428,17 @@ value that means it — `PolicyScopes()` returns exactly one element.
 As implemented, in EBNF:
 
 ```ebnf
-statement   = select | shape | search | write ;
+statement   = select | shape | search | write | traverse ;
 
-write       = ( "ASSERT" | "RETRACT" ) ident ident "=" value
+write       = ( "ASSERT" | "RETRACT" ) ident ident "=" writevalue
               [ "VALID" "FROM" number [ "TO" number ] ] ;
               (* no transaction clause exists, by decision *)
+
+writevalue  = value | reference ;
+reference   = "->" ident ;
+
+traverse    = "TRAVERSE" ident "DEPTH" number timeclause ;
+              (* ONE clause for the whole walk; no per-hop qualifier exists *)
 
 select      = "SELECT" projection "FROM" ident
               [ "WHERE" predicate ]
@@ -441,13 +483,14 @@ codec       = "none" | "identity" | "zstd" ;
 | string | `KindString` | `'single'` or `"double"` quoted; `Token.Text` excludes the quotes |
 | punctuation | `KindPunct` | Any other single rune, or one of the two-character operators `>=` `<=` `!=` `==` |
 
-**The twenty-three keywords**, all reserved:
+**The twenty-five keywords**, all reserved:
 
 ```
 SELECT  FROM  WHERE  AS  OF  TRANSACTION  MATCH
 SHAPE   LIKE  REQUIRE  OPTIONAL  SIMILARITY  WITH  COMPRESSION
 SEARCH  IN  FACET  BY  LIMIT
 ASSERT  RETRACT  VALID  TO
+TRAVERSE  DEPTH
 ```
 
 ### Quoting an identifier
@@ -609,6 +652,29 @@ var ErrTransactionTimeIsNotYours = errors.New(
 Its text is embedded in the `Expected` field of the `ParseError` a write with a
 `TRANSACTION` clause produces, so the caller gets the position and the reason
 together — rather than an "unexpected token" they will try harder to work around.
+
+## `Traverse`
+
+```go
+type Traverse struct {
+	Root  string     // the entity to walk from
+	Depth int        // always positive — see ErrNoDepth
+	Time  TimeClause // ONE clause, applied at every hop
+}
+```
+
+```go
+var ErrNoDepth = errors.New("ql: a traversal needs a positive DEPTH")
+
+const RefMarker = "->"
+```
+
+⚠ `Traverse` has no per-hop time field, and none may be added. See
+[Links and traversal](#links-and-traversal) for why that absence is the point.
+
+`RefMarker` is exported so a tool that generates statements uses the same marker
+the lexer does rather than hard-coding it. A write's reference-ness reaches the
+tree as `Write.ValueIsReference`.
 
 ## `Search`
 
