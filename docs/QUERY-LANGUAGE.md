@@ -3,10 +3,9 @@
 One idea carries the whole design: **time is a clause, not a family of verbs.**
 
 Everything else follows. There is no `SELECT_HISTORY`, no `AS_OF_SELECT`, no
-`MATCH_AT`. There is `SELECT`, there is `MATCH SHAPE`, and either of them may
-carry a time qualifier — including one qualifier per leg of a shape, which costs
-nothing extra precisely because the qualifier is a clause rather than part of a
-verb's name.
+`MATCH_AT`. There is `SELECT`, there is `MATCH SHAPE`, and either may carry a
+time qualifier — including one per leg of a shape, which costs nothing extra
+precisely because the qualifier is a clause rather than part of a verb's name.
 
 > **Status.** The language **parses**. Nothing **evaluates** it yet, because
 > there is no storage engine behind it (`docs/adr/BACKLOG.md` §20 and §12). Every
@@ -15,41 +14,82 @@ verb's name.
 > document says so rather than writing in a future tense that reads like a
 > promise.
 
+This page documents **every exported identifier** in the language package. That
+is enforced rather than claimed — see [Documentation coverage](#documentation-coverage).
+
 ---
 
 ## Contents
 
+**The language**
+- [Statements](#statements)
 - [Reading an entity](#reading-an-entity)
 - [Filtering](#filtering)
 - [Time travel](#time-travel)
-- [The two axes, and the table that resolves them](#the-two-axes-and-the-table-that-resolves-them)
+- [The defaults table](#the-defaults-table)
 - [Shape queries](#shape-queries)
 - [Storage policy](#storage-policy)
 - [Grammar](#grammar)
+- [Lexical reference](#lexical-reference)
+
+**The programmatic API**
+- [Parsing](#parsing)
+- [`Select` and `Predicate`](#select-and-predicate)
+- [`TimeClause`](#timeclause)
+- [`ShapeQuery`, `Leg` and `LegKind`](#shapequery-leg-and-legkind)
+- [The result model: `Row` and `Binding`](#the-result-model-row-and-binding)
+- [Storage policy: `PolicyClause` and `PolicyScope`](#storage-policy-policyclause-and-policyscope)
+- [The lexer: `Lexer`, `Token` and `Kind`](#the-lexer-lexer-token-and-kind)
 - [Errors](#errors)
+
+**Boundaries**
 - [What it deliberately cannot say](#what-it-deliberately-cannot-say)
-- [Parsing one yourself](#parsing-one-yourself)
+- [Documentation coverage](#documentation-coverage)
 
 ---
 
+# The language
+
+## Statements
+
+There are exactly two, and `Parse` accepts nothing else:
+
+| Statement | Keyword it starts with | Compiles to |
+|---|---|---|
+| Read an entity's attributes | `SELECT` | `*Select` |
+| Find resembling subjects | `MATCH` | `*ShapeQuery` |
+
+Anything else is refused at the first token with `expected SELECT or MATCH`. A
+statement must also be *complete* — trailing tokens are refused with
+`expected end of statement`, rather than silently ignored:
+
+```sql
+SELECT * FROM planet-7 rubbish     -- refused: expected end of statement
+```
+
+A storage policy (`WITH COMPRESSION …`) is a **clause**, not a statement; it is
+parsed separately. See [Storage policy](#storage-policy).
+
 ## Reading an entity
 
-Project every attribute:
+Project every attribute with `*`:
 
 ```sql
 SELECT * FROM planet-7
 ```
 
-Or name the ones you want:
+Or name them, comma-separated:
 
 ```sql
-SELECT mass, radius FROM planet-7
+SELECT mass FROM planet-7
+SELECT mass, radius, discovered_by FROM planet-7
 ```
 
 Keywords are case-insensitive, so `select * from planet-7` is the same
-statement. Identifiers are case-**sensitive** and may contain letters, digits,
-`_`, `-` and `:` — which is why `planet-7` is one name rather than a subtraction,
-and why a leaf identifier like `2:0007` can be written literally.
+statement. Identifiers are case-**sensitive**.
+
+⚠ `*` and a named list are the only two projections. There is no `SELECT` with an
+empty list, and no way to mix them (`SELECT *, mass` is refused).
 
 ## Filtering
 
@@ -57,18 +97,27 @@ and why a leaf identifier like `2:0007` can be written literally.
 SELECT * FROM planet-7 WHERE mass > 1000
 SELECT name FROM planet-7 WHERE class = 'terrestrial'
 SELECT * FROM planet-7 WHERE class != "gas giant"
+SELECT * FROM planet-7 WHERE mass >= -40.5
+SELECT * FROM planet-7 WHERE status = active
 ```
 
-Comparison operators are `=`, `==`, `!=`, `<`, `>`, `<=`, `>=`. Values are
-numbers, single- or double-quoted strings, or bare identifiers.
+Operators, all of them:
 
-Whether a value was written as a number is **recorded on the parse tree** rather
-than guessed later. `mass > 1000` and `mass > '1000'` are different questions,
-and an evaluator that had to infer which one you meant would answer the wrong one
-some of the time.
+| | | | | | | |
+|---|---|---|---|---|---|---|
+| `=` | `==` | `!=` | `<` | `>` | `<=` | `>=` |
 
-One `WHERE` predicate is supported. Conjunction, disjunction and grouping are not
-in the language yet — see [what it deliberately cannot say](#what-it-deliberately-cannot-say).
+`=` and `==` are both accepted and parse identically; neither is normalised to
+the other, so the tree records which one was written.
+
+Values are a **number**, a **quoted string** (single or double), or a **bare
+identifier**. Whether the value was written as a number is recorded on the tree
+as `Predicate.ValueIsNumber` rather than guessed later — `mass > 1000` and
+`mass > '1000'` are different questions, and an evaluator that had to infer which
+one you meant would answer the wrong one some of the time.
+
+⚠ **Exactly one predicate.** There is no `AND`, no `OR`, and no parentheses. See
+[what it deliberately cannot say](#what-it-deliberately-cannot-say).
 
 ## Time travel
 
@@ -84,20 +133,29 @@ SELECT * FROM planet-7 AS OF 1700000000 TRANSACTION 1700000500
 - **`TRANSACTION u`** asks about **transaction time** — when this store learned it.
 
 They are different questions and the language keeps them apart. "What was the
-address on the first of March?" is `AS OF`. "What did we *believe* the address was
-when we ran the report last Tuesday?" needs `TRANSACTION` — and no single
+address on the first of March?" is `AS OF`. "What did we *believe* the address
+was when we ran the report last Tuesday?" needs `TRANSACTION` — and no single
 timestamp can answer both.
 
-> A transaction is currently written as its clock reading. A canonical textual
-> form for a full transaction identifier is deferred until something produces one
-> for a caller to copy.
+Both take an **integer**. `AS OF 'yesterday'` is refused with
+`expected an instant`; `TRANSACTION 1.5` is refused with
+`expected a transaction reference`.
+
+Order is fixed: `AS OF` before `TRANSACTION`. Writing them the other way round
+leaves the `TRANSACTION` clause unconsumed and the statement is refused with
+`expected end of statement`.
+
+> A transaction is currently written as its clock reading, and parses into a
+> `tx.TxID` whose `HLC.Wall` is that reading. A canonical textual form for a full
+> transaction identifier is deferred until something produces one for a caller to
+> copy.
 
 ![Two time axes, and what each clause combination resolves to](diagrams/bitemporal.svg)
 
-## The two axes, and the table that resolves them
+## The defaults table
 
-The parse tree records **what you wrote**, unresolved. Defaults are applied in one
-place, and this is the whole table:
+The parse tree records **what you wrote**, unresolved. Defaults are applied in
+one place — `TimeClause.Resolve` — and this is the whole table:
 
 | you wrote | transaction axis | valid time |
 |-----------|------------------|------------|
@@ -112,13 +170,15 @@ one value to both axes is what a reasonable implementer writes by default, and i
 silently answers a different question than the one asked, so it is a stated rule
 rather than a default nobody wrote down.
 
-Keeping "as written" separate from "resolved" is what makes this checkable at
-all: if parsing applied defaults, there would be nothing left to compare the
-table against.
+"Open" means no datom is excluded for having been recorded late.
+
+Keeping "as written" separate from "resolved" is what makes this checkable: if
+parsing applied defaults, there would be nothing left to compare the table
+against.
 
 ## Shape queries
 
-Find subjects that resemble a subject, on attributes you name:
+Find subjects resembling a subject, on attributes you name:
 
 ```sql
 MATCH SHAPE LIKE planet-7
@@ -127,9 +187,23 @@ MATCH SHAPE LIKE planet-7
   SIMILARITY jaccard >= 0.8
 ```
 
-- **`REQUIRE`** — a leg that matches nothing **drops the row**.
-- **`OPTIONAL`** — a leg that matches nothing yields an **unbound** value and the
-  row is **returned**.
+Both leg groups are optional and either may be omitted:
+
+```sql
+MATCH SHAPE LIKE planet-7 REQUIRE mass SIMILARITY jaccard >= 0.8
+MATCH SHAPE LIKE planet-7 OPTIONAL nickname SIMILARITY jaccard > 0.5
+MATCH SHAPE LIKE planet-7 SIMILARITY jaccard >= 0.9
+```
+
+`REQUIRE` must come before `OPTIONAL`. Legs from both groups land in one `Legs`
+slice in written order, each tagged with its `LegKind`.
+
+**Semantics of a leg:**
+
+| Leg kind | Matched something | Matched nothing |
+|---|---|---|
+| `REQUIRE` | binds the value | **the row is dropped** |
+| `OPTIONAL` | binds the value | binds **unbound**, and the row is **kept** |
 
 ⚠ Unbound is not the empty string. Conflating them is how a consumer silently
 reads "this subject has no nickname" as "this subject's nickname is blank". If
@@ -140,47 +214,57 @@ absent, which is never the data anyone tests with.
 **The metric and threshold are required.** There is no default:
 
 ```sql
-MATCH SHAPE LIKE planet-7 REQUIRE mass SIMILARITY jaccard >= 0.8   -- fine
-MATCH SHAPE LIKE planet-7 REQUIRE mass                             -- refused
+MATCH SHAPE LIKE planet-7 REQUIRE mass                      -- refused
+MATCH SHAPE LIKE planet-7 REQUIRE mass SIMILARITY jaccard   -- refused
 ```
 
-A default threshold would make every unqualified shape query reproducible only by
-whoever knows the default, and the value would be a constant nobody wrote down.
-Being refused at parse time is the cheaper failure.
+Both carry `ErrNoThreshold`'s text in the `Expected` field. A default threshold
+would make every unqualified shape query reproducible only by whoever knows the
+default, and the value would be a constant nobody wrote down.
+
+The comparison accepts **`>=` or `>`** and nothing else — `<`, `<=` and `=` are
+refused, because a similarity floor is the only useful form. The threshold is a
+float, so `0.8`, `1`, and `.75` all parse.
 
 Because time is a clause, **each leg may carry its own qualifier**:
 
 ```sql
 MATCH SHAPE LIKE planet-7
   REQUIRE mass AS OF 1700000000, radius
-  OPTIONAL nickname AS OF 1600000000
+  OPTIONAL nickname AS OF 1600000000 TRANSACTION 1650000000
   SIMILARITY jaccard >= 0.8
   AS OF 1700000000
 ```
 
 That reads "match on mass as it stood at one instant and nickname as it stood at
-another". Under a family of temporal verbs this would need a second grammar; here
-it is the same clause applied in one more position.
+another, over subjects as they stood at a third". Under a family of temporal
+verbs this would need a second grammar; here it is the same clause applied in one
+more position. A leg with no qualifier of its own carries a zero `TimeClause`.
 
 ## Storage policy
 
 ```sql
 WITH COMPRESSION zstd
+WITH COMPRESSION none
+WITH COMPRESSION identity
 ```
 
-Codecs: `none`, `identity` (a synonym for `none`), `zstd`.
+Codec names are matched **case-insensitively** and normalised to lower case on
+the clause. `identity` and `none` are synonyms for the same codec. An unknown
+codec is refused with the known list in the error.
 
 Two things about this clause are deliberate.
 
-**It is currently standalone.** The statement that would *carry* it is a write,
-and no write statement exists yet. Defining the clause now fixes what a policy
-*means*; which statements accept it is decided when there is one to accept it.
+**It is currently standalone**, parsed by `ParsePolicyClause` rather than as part
+of a statement. The statement that would *carry* it is a write, and no write
+statement exists yet. Defining the clause now fixes what a policy *means*; which
+statements accept it is decided when there is one to accept it.
 
-**Its scope is `new writes only`, and there is no way to express anything else.**
-Every block records the codec and cipher it was written with, so changing a policy
-reinterprets nothing already stored. The language has no syntax for re-encoding
-what exists, and the absence is enforced by there being no scope value that means
-it.
+**Its scope is new-writes-only, and there is no way to express anything else.**
+Every block records the codec and cipher it was written with, so changing a
+policy reinterprets nothing already stored. The language has no syntax for
+re-encoding what exists, and the absence is enforced by there being no scope
+value that means it — `PolicyScopes()` returns exactly one element.
 
 ## Grammar
 
@@ -214,32 +298,273 @@ policy      = "WITH" "COMPRESSION" codec ;          (* parsed standalone *)
 codec       = "none" | "identity" | "zstd" ;
 ```
 
-Lexical rules:
+## Lexical reference
 
-| | |
-|---|---|
-| **keywords** | `SELECT FROM WHERE AS OF TRANSACTION MATCH SHAPE LIKE REQUIRE OPTIONAL SIMILARITY WITH COMPRESSION` — matched case-insensitively |
-| **identifiers** | letters, digits, `_`, `-`, `:`; case-sensitive |
-| **strings** | `'single'` or `"double"` quoted |
-| **numbers** | digits, optionally leading `-`, optionally containing `.` |
-| **comments** | none |
+| Token class | `Kind` | Rule |
+|---|---|---|
+| end of input | `KindEOF` | Returned forever once the input is exhausted |
+| identifier | `KindIdent` | Letters, digits, `_`, `-`, `:`; must start with a letter or `_`. Case-sensitive |
+| keyword | `KindKeyword` | One of the fourteen below, matched case-insensitively and normalised to UPPER CASE in `Token.Text` |
+| number | `KindNumber` | Digits, an optional leading `-`, and any number of `.` |
+| string | `KindString` | `'single'` or `"double"` quoted; `Token.Text` excludes the quotes |
+| punctuation | `KindPunct` | Any other single rune, or one of the two-character operators `>=` `<=` `!=` `==` |
 
-⚠ **Keywords are reserved everywhere.** An attribute named `like` or `shape`
-lexes as a keyword and will not parse as a name, and there is no quoting
-mechanism to escape one. That is a real limitation rather than a subtlety — if
-your data uses one of those fourteen words as an attribute name, the language
-cannot currently address it.
+**The fourteen keywords**, all reserved:
+
+```
+SELECT  FROM  WHERE  AS  OF  TRANSACTION  MATCH
+SHAPE   LIKE  REQUIRE  OPTIONAL  SIMILARITY  WITH  COMPRESSION
+```
+
+⚠ **Keywords are reserved everywhere and there is no quoting mechanism.** An
+attribute named `like` or `shape` lexes as a keyword and cannot be addressed.
+That is a real limitation rather than a subtlety — if your data uses one of those
+fourteen words as an attribute name, the language cannot currently reach it.
+
+Other lexical facts worth knowing:
+
+- **Whitespace** separates tokens and is otherwise ignored, so a statement may
+  span any number of lines.
+- **There are no comments.** `--` lexes as two punctuation tokens.
+- **`-` is part of a number only when a digit follows it**, so `planet-7` is one
+  identifier and `mass>-40` is three tokens.
+- **An unterminated string is not a lex error.** The lexer returns what it has,
+  positioned at the opening quote, and the parser produces the error with the
+  position already correct.
+- **`Token.Pos` is a byte offset**, and it is part of the contract rather than a
+  diagnostic — see [Errors](#errors).
+
+---
+
+# The programmatic API
+
+Everything below lives in `internal/core/ql`.
+
+## Parsing
+
+```go
+func Parse(src string) (Statement, error)
+```
+
+`Statement` is a sealed interface — it has an unexported method, so the only
+implementations are `*Select` and `*ShapeQuery`, and a type switch over the two
+is exhaustive by construction:
+
+```go
+switch s := stmt.(type) {
+case *Select:
+	// …
+case *ShapeQuery:
+	// …
+}
+```
+
+## `Select` and `Predicate`
+
+```go
+type Select struct {
+	Attributes []string   // the projection; EMPTY means every attribute
+	Entity     string     // what is being read
+	Where      *Predicate // nil when there was no WHERE
+	Time       TimeClause // as WRITTEN, before defaults
+}
+```
+
+⚠ `Attributes` being empty is how `SELECT *` is represented. There is no separate
+"star" flag, so a consumer must treat empty as *all* rather than as *none*.
+
+```go
+type Predicate struct {
+	Attribute     string
+	Op            string // one of = == != < > <= >=, exactly as written
+	Value         string // the literal, with quotes already stripped
+	ValueIsNumber bool   // whether it was written as a number
+}
+```
+
+## `TimeClause`
+
+```go
+type TimeClause struct {
+	ValidAt *int64    // from AS OF t, or nil
+	AsOf    *tx.TxID  // from TRANSACTION u, or nil
+}
+
+func (c TimeClause) Resolve(now int64) temporal.Query
+```
+
+Both fields are pointers so "not supplied" is representable and cannot be
+confused with a zero value — an instant of zero is a legitimate question.
+
+⚠ The two fields have **different types on purpose**. The defect this guards
+against is passing one value into both axes; when both are plain instants that is
+a one-character mistake, and when one is an instant and the other a transaction
+identifier the compiler refuses it. The type system carries part of a rule that
+would otherwise rest entirely on review.
+
+`Resolve` applies [the defaults table](#the-defaults-table) by forwarding to the
+package that owns what time means. It decides nothing itself, and contains no
+branch — two implementations of a four-row table would drift, and the drift is
+invisible until a query returns the wrong history.
+
+## `ShapeQuery`, `Leg` and `LegKind`
+
+```go
+type ShapeQuery struct {
+	Subject   string
+	Legs      []Leg
+	Metric    string
+	Threshold float64
+	Time      TimeClause
+}
+
+type Leg struct {
+	Attribute string
+	Kind      LegKind
+	Time      TimeClause // this leg's own qualifier
+}
+```
+
+```go
+type LegKind int
+
+const (
+	LegKindUnset LegKind = iota // the zero value, never valid
+	LegRequired                 // matches nothing → the row is dropped
+	LegOptional                 // matches nothing → unbound, row kept
+)
+
+func (k LegKind) String() string  // "unset" | "required" | "optional"
+```
+
+`LegKindUnset` exists so that a zero-valued `Leg` is detectably wrong rather than
+silently behaving like one of the two real kinds.
+
+## The result model: `Row` and `Binding`
+
+This is the shape an evaluator must produce. It is decided here, as pure
+functions, so the semantics are settled before any evaluator exists.
+
+```go
+type Binding struct {
+	Attribute string
+	// value and bound are unexported: a binding can only be made by Bound or
+	// Unbound, so "no value" cannot be constructed by accident.
+}
+
+func Bound(attribute, value string) Binding
+func Unbound(attribute string) Binding
+
+func (b Binding) IsBound() bool
+func (b Binding) Value() (string, bool)
+func (b Binding) String() string   // `attr="value"` or `attr=<unbound>`
+```
+
+```go
+type Row struct {
+	Subject  string
+	Bindings []Binding // one per leg, in the order the legs were written
+}
+
+func (r Row) Get(attribute string) (Binding, bool)
+```
+
+```go
+func BuildRow(subject string, legs []Leg, matched map[string]string) (Row, bool)
+```
+
+`BuildRow` **is** the match semantics, written as a pure function so the rule is
+decidable with no storage engine: an evaluator supplies `matched`, and this
+decides what the row looks like and whether it survives.
+
+| Leg kind | In `matched` | Result |
+|---|---|---|
+| any | yes | `Bound` binding appended |
+| `LegRequired` | no | returns `(Row{}, false)` — **the row is dropped** |
+| `LegOptional` | no | `Unbound` binding appended, row kept |
+
+The second return is `false` exactly when a required leg matched nothing.
+
+## Storage policy: `PolicyClause` and `PolicyScope`
+
+```go
+func ParsePolicyClause(src string) (PolicyClause, error)
+
+type PolicyClause struct {
+	Codec segment.CodecID // resolved against the segment format's registry
+	Name  string          // the codec as written, lower-cased, for diagnostics
+	Scope PolicyScope     // always PolicyNewWritesOnly
+}
+```
+
+```go
+type PolicyScope int
+
+const PolicyNewWritesOnly PolicyScope = 1
+
+func PolicyScopes() []PolicyScope     // exactly one element
+func (s PolicyScope) String() string  // "new writes only" | "unset"
+```
+
+⚠ `Scope` is a field on the clause even though it can only hold one value. That
+is deliberate: a reader of the tree *sees* the limit rather than having to know
+it, and the day a second scope is proposed, the place it would have to go already
+exists and is already named.
+
+`Codec` resolves to an identifier the segment format already understands, so the
+language adds no second codec registry — one registry, one set of names.
+
+## The lexer: `Lexer`, `Token` and `Kind`
+
+The lexer is exported so a tool can highlight or inspect a statement without
+parsing it.
+
+```go
+func NewLexer(src string) *Lexer
+
+func (l *Lexer) Next() Token     // one token; KindEOF forever at the end
+func (l *Lexer) Tokens() []Token // the whole input, ending with a KindEOF token
+```
+
+```go
+type Token struct {
+	Kind Kind
+	Text string // keywords are upper-cased; strings have quotes stripped
+	Pos  int    // byte offset
+}
+
+func (t Token) String() string   // e.g. `keyword "SELECT"`, or `end of input`
+```
+
+```go
+type Kind int
+
+const (
+	KindEOF Kind = iota
+	KindIdent
+	KindKeyword
+	KindNumber
+	KindString
+	KindPunct
+)
+
+func (k Kind) String() string
+```
+
+`Kind.String` returns the words used in error messages — `end of input`,
+`identifier`, `keyword`, `number`, `string`, `punctuation` — so a `ParseError`
+reads in the same vocabulary a caller sees here.
 
 ## Errors
 
-A parse failure is a value, not a string:
-
 ```go
 type ParseError struct {
-    Pos      int    // byte offset of the token that could not be accepted
-    Found    string // what was there
-    Expected string // what would have been accepted
+	Pos      int    // byte offset of the token that could not be accepted
+	Found    string // what was there
+	Expected string // what would have been accepted
 }
+
+func (e *ParseError) Error() string
 ```
 
 ```
@@ -250,65 +575,54 @@ The position is part of the contract, not a diagnostic. A parser that answers
 "syntax error" has failed at its actual job, which for a language is telling the
 caller what to write instead.
 
+```go
+var ErrNoThreshold = errors.New("ql: a shape query needs a metric and a threshold")
+```
+
+`ErrNoThreshold` is not returned directly — its text is embedded in the
+`Expected` field of the `ParseError` a threshold-less shape query produces, so
+the caller gets the position *and* the reason in one value.
+
+---
+
+# Boundaries
+
 ## What it deliberately cannot say
 
-Listing these is part of the design rather than an apology — each one is a
-decision with a reason, and none of them is a gap someone forgot.
+Listing these is part of the design rather than an apology — each is a decision
+with a reason, and none is a gap someone forgot.
 
 | Not expressible | Why |
 |---|---|
 | `AND` / `OR` / parentheses in `WHERE` | One predicate is what the evaluator will first have to satisfy. Compound predicates are a language extension to make once there is something to run them against, rather than a grammar to guess at now. |
-| Joins across entities | The entity is the transaction boundary. A cross-entity join is a read over a snapshot, and what a snapshot spans is a decision the storage engine has to make first. |
+| More than one entity per `SELECT` | The entity is the transaction boundary. A cross-entity read is a read over a snapshot, and what a snapshot spans is a decision the storage engine has to make first. |
+| Joins | Same reason, one step further out. |
 | Enumerating entities | The language reads a **named** entity. An unbounded listing over a planetary key space is not something a single result can return, so the shape of that answer is a real decision rather than a missing keyword. |
-| Writes — `ASSERT` / `RETRACT` | Nothing evaluates yet, so a write statement would be syntax with no semantics. When it lands, the append-only model means there is no `UPDATE` and no `DELETE`. |
+| Ordering or limiting results | There is no result set to order yet. Deciding `ORDER BY` before an evaluator exists would be guessing at its cost model. |
+| Aggregation — `COUNT`, `SUM` | Same. |
+| Writes — `ASSERT` / `RETRACT` | Nothing evaluates yet, so a write statement would be syntax with no semantics. |
 | `UPDATE` or `DELETE`, ever | The store appends. A retraction is an assertion, and erasure is the destruction of a key. A verb implying in-place mutation would describe a data model this system does not have. |
+| Quoting a keyword as an identifier | No quoting mechanism exists, so the fourteen keywords are unreachable as attribute names. A real limitation, recorded rather than hidden. |
 | Re-encoding existing data via a policy | Every block records how it was written. A policy sets what the **next** write produces; there is no scope value meaning "and rewrite what exists". |
+| Naming a similarity floor with `<` or `=` | A similarity threshold is a floor. Accepting `<` would let a query ask for *dissimilar* subjects through a keyword that says the opposite. |
 
-## Parsing one yourself
+## Documentation coverage
 
-There is no CLI for the language yet — `sdev1-addr` is the only binary, and it
-covers addressing rather than querying. From Go:
+Every exported identifier in the language package — 15 types, 7 functions, 10
+constants and 1 error variable — appears somewhere on this page, inside a code
+block or as a `backticked` name.
 
-```go
-stmt, err := ql.Parse("SELECT mass FROM planet-7 AS OF 1700000000")
-if err != nil {
-	fmt.Println("refused:", err)
-	return
-}
+That is checked rather than asserted. `TestQueryLanguageDocIsComplete` in
+`internal/core/ql/doccoverage_test.go` parses the package's own source for
+exported top-level declarations, extracts the code spans from this file, and
+fails naming anything missing.
 
-sel := stmt.(*ql.Select)
-fmt.Println("entity:    ", sel.Entity)
-fmt.Println("attributes:", sel.Attributes)
+⚠ It searches only code spans, never prose. An earlier guard in this repository
+matched a symbol in a comment that explained why *not* to use it, and a check
+that fires on prose gets switched off — after which it protects nothing.
 
-// As WRITTEN — the transaction axis is nil, meaning open.
-fmt.Println("valid at:  ", *sel.Time.ValidAt)
-fmt.Println("as of txn: ", sel.Time.AsOf)
-
-// Resolved through the one implementation of the defaults table.
-resolved := sel.Time.Resolve(1700009999)
-fmt.Println("resolved:  ", *resolved.ValidAt, resolved.AsOf)
-```
-
-```
-entity:     planet-7
-attributes: [mass]
-valid at:   1700000000
-as of txn:  <nil>
-resolved:   1700000000 <nil>
-```
-
-`Resolve` calls into the package that owns what time means and decides nothing
-itself. Two implementations of a four-row table would drift, and the drift is
-invisible until a query returns the wrong history.
-
-> **This snippet is a test.** It lives in the repository as
-> `internal/core/ql/example_readme_test.go` with the output above pinned as its
-> expected result, so it cannot drift from the API without the suite failing. A
-> code block nothing executes is a claim, not a sample.
->
-> `ql` is an `internal/` package, so it can only be imported from inside this
-> module — which is also why the example is a test here rather than a `main` you
-> paste elsewhere.
+So a new exported identifier makes the suite go red until it is documented here.
+This page cannot fall behind the language without someone deciding to let it.
 
 ---
 
@@ -316,3 +630,7 @@ invisible until a query returns the wrong history.
 with the two time axes in `ADR-002` and the append-only model in `ADR-003`. The
 surfaces that compile *to* this language are `ADR-013` (agent tools) and
 `ADR-014` (the filesystem).
+
+The runnable example from this page lives in
+`internal/core/ql/example_readme_test.go`, with its output pinned as the expected
+result — a code block nothing executes is a claim, not a sample.

@@ -8,7 +8,7 @@
 **Consumes:** `temporal.Query` and `temporal.ResolveQualifiers` from ADR-002, `tx.TxID` from ADR-002
 **Data dependency:** hermetic
 **Proof map:** v1
-**Rests-on:** `a lone instant binding valid time and leaving transaction time open`, `the defaults table having exactly one implementation`, `a parse error naming its position and what was expected`
+**Rests-on:** `a lone instant binding valid time and leaving transaction time open`, `the defaults table having exactly one implementation`, `a parse error naming its position and what was expected`, `the published guide covering every exported identifier`
 
 ## Goal
 
@@ -25,6 +25,9 @@ clause mean exactly what ADR-002 says it means.
 | `internal/core/ql/parse.go` | add | `Parse` and `ParseError`. |
 | `internal/core/ql/ql_test.go` | add | The lexer and parser tests below. |
 | `internal/core/ql/temporal_test.go` | add | The defaults-table falsifier and the single-implementation guard. |
+| `docs/QUERY-LANGUAGE.md` | add | The published guide: syntax, grammar, lexical rules, the whole exported API, and the boundaries. |
+| `internal/core/ql/doccoverage_test.go` | add | The gate that fails when an exported identifier is missing from the guide. |
+| `internal/core/ql/example_readme_test.go` | add | The guide's worked example, as a runnable test with its output pinned. |
 
 ★ `TimeClause.Resolve` calls `temporal.ResolveQualifiers`. It does not branch on
 the four cases itself, and that is the point: two implementations of one table
@@ -39,12 +42,13 @@ drift, and the drift is invisible until a query returns the wrong history.
 5. [S5] Implement `Parse` for a `SELECT` term with `WHERE`, `AS OF` and `TRANSACTION` clauses, producing a `Select`.
 6. [S6] Make the time clause attach to a statement, and leave room for it to attach to a leg. ★Attaching per leg is why the clause form was chosen over a verb family; under a verb family it would need a second grammar.
 7. [S7] Make every parse failure a `ParseError` carrying the position, what was found and what was expected. [proof: mutation]
+8. [S8] Publish `docs/QUERY-LANGUAGE.md` covering the whole exported surface, and gate it: a test parses this package for exported top-level declarations and fails naming any absent from the guide. ★A public language IS its documentation — its caller cannot read the source, and the agent surface built on top of it cannot read anything at all, so an undocumented export is a feature that effectively does not exist. ⚠The gate searches CODE SPANS only, never prose: an earlier guard in this repository grepped raw text and matched the comment explaining why not to use the symbol it was looking for. [proof: mutation]
 
 ## Acceptance
 
 ```bash
 set -o pipefail
-go test ./internal/core/ql/... -race -run 'TestTimeClauseImplements|TestLoneInstantBinds|TestPackageComputesNoDefaults|TestGuardFlagsABranching|TestResolveMatchesTheTemporal|TestParseErrorNames|TestLexerSpans|TestSelectRoundTrips' -count=1 2>&1 | tee /tmp/adr011-t1a.out \
+go test ./internal/core/ql/... -race -run 'TestTimeClauseImplements|TestLoneInstantBinds|TestPackageComputesNoDefaults|TestGuardFlagsABranching|TestResolveMatchesTheTemporal|TestParseErrorNames|TestLexerSpans|TestSelectRoundTrips|TestQueryLanguageDocIsComplete' -count=1 2>&1 | tee /tmp/adr011-t1a.out \
   && ! grep -qE "no tests to run|matched no packages|^FAIL|^--- FAIL|DATA RACE" /tmp/adr011-t1a.out \
   && go test ./internal/core/ql/... ./internal/core/temporal/... -race -count=1 2>&1 | tee /tmp/adr011-t1b.out \
   && ! grep -qE "no tests to run|matched no packages|^FAIL|^--- FAIL|DATA RACE" /tmp/adr011-t1b.out
@@ -66,6 +70,7 @@ reimplement — so a change there that broke agreement would show up here.
 | `TestParseErrorNamesPositionAndExpectation` | `internal/core/ql/ql_test.go` | Every parse failure carries a byte position, what was found and what was expected — not a bare "syntax error" | — | S7 |
 | `TestLexerSpansAndPositions` | `internal/core/ql/ql_test.go` | Tokens carry accurate positions across whitespace, strings and numbers, so an error can point at the right place | — | S2 |
 | `TestSelectRoundTripsThroughTheAST` | `internal/core/ql/ql_test.go` | A statement parses to the AST a caller expects, including with each of the four time-clause shapes attached | — | S5, S6 |
+| `TestQueryLanguageDocIsComplete` | `internal/core/ql/doccoverage_test.go` | Every exported top-level identifier in the package appears in `docs/QUERY-LANGUAGE.md` inside a code span. ⚠Searches fenced blocks and backticked names only, never prose — a guard that fires on prose gets switched off. Carries a positive control so an extraction bug that matched everything cannot pass silently | — | S8 |
 
 ## Reachability
 
@@ -81,6 +86,10 @@ reimplement — so a change there that broke agreement would show up here.
 - 2026-09-04 · 4016ba8* · mutant killed · exit 1 · `internal/core/ql/parse.go` · binds a lone instant to BOTH time axes, which is what a reasonable implementer writes and what a predecessor project shipped: a write committed now and valid from the past is then excluded by its own commit time, so a query at the instant it was backdated to returns nothing · acceptance-sha256:e983867be52a1ef1d6839abe99e5ec6cbeee9f440f307433636785eebfab03f2 · covers:a lone instant binding valid time and leaving transaction time open
 - 2026-09-04 · 4016ba8* · mutant killed · exit 1 · `internal/core/ql/ast.go` · reimplements the defaults table here instead of forwarding to the package that owns it — behaviourally identical today and free to drift tomorrow, with the drift invisible until a query returns the wrong history · acceptance-sha256:e983867be52a1ef1d6839abe99e5ec6cbeee9f440f307433636785eebfab03f2 · covers:the defaults table having exactly one implementation
 - 2026-09-04 · 4016ba8* · mutant killed · exit 1 · `internal/core/ql/parse.go` · drops what was expected from every parse error, reducing a public contract to the bare syntax-error message that tells a caller nothing about what to write instead · acceptance-sha256:e983867be52a1ef1d6839abe99e5ec6cbeee9f440f307433636785eebfab03f2 · covers:a parse error naming its position and what was expected
+- 2026-09-04 · 16d7763* · mutant killed · exit 1 · `internal/core/ql/policy.go` · adds an exported constant that the published guide does not mention, which is what happens every time the language grows and the documentation does not. For a public language that is not cosmetic: the caller cannot read the source, and the agent surface built on this one reads nothing but the descriptions it is given, so an undocumented export is a feature that effectively does not exist · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · covers:the published guide covering every exported identifier
+- 2026-09-04 · 16d7763* · mutant killed · exit 1 · `internal/core/ql/parse.go` · binds a lone AS OF instant to BOTH time axes, which is what a reasonable implementer writes by default. A write committed now and valid from the past then becomes invisible to a query about that past instant, so a backdated correction silently disappears from every historical read · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · covers:a lone instant binding valid time and leaving transaction time open
+- 2026-09-04 · 16d7763* · mutant killed · exit 1 · `internal/core/ql/ast.go` · reimplements the four-row defaults table here instead of forwarding to the package that owns what time means. It is behaviourally identical today and free to drift tomorrow, and the drift is invisible until a query quietly returns the wrong history · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · covers:the defaults table having exactly one implementation
+- 2026-09-04 · 16d7763* · mutant killed · exit 1 · `internal/core/ql/parse.go` · drops what was expected from every parse error and replaces it with a bare syntax-error string. The position survives, so the failure still looks informative — but a language whose error cannot say what to write instead has failed at the job an error exists to do, and for a caller that cannot read the grammar it is the difference between a fix and a guess · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · covers:a parse error naming its position and what was expected
 
 ## Invariants
 
@@ -160,3 +169,8 @@ prevent, and it is what a caller will ask for.
 - 2026-09-04 · 4016ba8* · exit 0 · `set -o pipefail …` · acceptance-sha256:e983867be52a1ef1d6839abe99e5ec6cbeee9f440f307433636785eebfab03f2 · ms:3466
 - 2026-09-04 · 4016ba8* · exit 0 · `set -o pipefail …` · acceptance-sha256:e983867be52a1ef1d6839abe99e5ec6cbeee9f440f307433636785eebfab03f2 · ms:3522
 - 2026-09-04 · 4016ba8* · exit 0 · `set -o pipefail …` · acceptance-sha256:e983867be52a1ef1d6839abe99e5ec6cbeee9f440f307433636785eebfab03f2 · ms:3534
+- 2026-09-04 · 16d7763* · exit 0 · `set -o pipefail …` · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · ms:3981
+- 2026-09-04 · 16d7763* · exit 0 · `set -o pipefail …` · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · ms:3713
+- 2026-09-04 · 16d7763* · exit 0 · `set -o pipefail …` · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · ms:3685
+- 2026-09-04 · 16d7763* · exit 0 · `set -o pipefail …` · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · ms:3687
+- 2026-09-04 · 16d7763* · exit 0 · `set -o pipefail …` · acceptance-sha256:b6f2f99cbdef283b6806176272543a60396224d1742ea5d4e909512066049c0d · ms:3729
