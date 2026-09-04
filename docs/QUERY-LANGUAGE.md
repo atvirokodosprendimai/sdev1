@@ -59,6 +59,8 @@ There are exactly three, and `Parse` accepts nothing else:
 | Read an entity's attributes | `SELECT` | `*Select` |
 | Find resembling subjects | `MATCH` | `*ShapeQuery` |
 | Find entities by their text | `SEARCH` | `*Search` |
+| State that a fact held | `ASSERT` | `*Write` |
+| State that a fact stopped holding | `RETRACT` | `*Write` |
 
 Anything else is refused at the first token with `expected SELECT or MATCH`. A
 statement must also be *complete* — trailing tokens are refused with
@@ -242,6 +244,42 @@ another, over subjects as they stood at a third". Under a family of temporal
 verbs this would need a second grammar; here it is the same clause applied in one
 more position. A leg with no qualifier of its own carries a zero `TimeClause`.
 
+## Writing facts
+
+```sql
+ASSERT planet-7 mass = 5972
+ASSERT planet-7 class = 'terrestrial' VALID FROM 100
+ASSERT planet-7 class = 'terrestrial' VALID FROM 100 TO 200
+RETRACT planet-7 class = 'terrestrial' VALID FROM 500
+```
+
+One entity, one attribute, one value. **`VALID FROM t [TO u]` states when the
+fact was true in the world.** Omit it and the fact holds from *this write's own
+instant*, until further notice.
+
+⚠ **There is no way to state when a fact was RECORDED, and that absence is
+deliberate.** Valid time is a claim about the world, and backdating it is the
+ordinary correct use of the axis. Transaction time is the record of when this
+system was *told*, and it is the only thing that makes the store auditable — a
+caller who could set it could claim to have known something earlier than they
+did, and **no query could detect it**, because every query's evidence would be
+the value that was forged. A `TRANSACTION` clause on a write is a parse error
+carrying `ErrTransactionTimeIsNotYours`, not a clause that is quietly ignored.
+
+⚠ **There is no `UPDATE` and no `DELETE`, and there never will be.** An update is
+a new assertion at a later transaction; a deletion is a retraction; an erasure is
+the destruction of a key. A CRUD verb would describe a data model this store does
+not have — and everything a caller then inferred about history and erasure would
+be wrong, silently.
+
+⚠ **A retraction states when the fact stopped holding.** Omitting the clause
+retracts from the write's own instant; retracting a fact *as if it had never been
+true* has to be said explicitly, so an omission can never rewrite history by
+accident.
+
+The entity is the transaction boundary, so a write names exactly one — a second
+entity does not parse, rather than failing at commit.
+
 ## Search and facets
 
 ```sql
@@ -309,7 +347,11 @@ value that means it — `PolicyScopes()` returns exactly one element.
 As implemented, in EBNF:
 
 ```ebnf
-statement   = select | shape | search ;
+statement   = select | shape | search | write ;
+
+write       = ( "ASSERT" | "RETRACT" ) ident ident "=" value
+              [ "VALID" "FROM" number [ "TO" number ] ] ;
+              (* no transaction clause exists, by decision *)
 
 select      = "SELECT" projection "FROM" ident
               [ "WHERE" predicate ]
@@ -354,12 +396,13 @@ codec       = "none" | "identity" | "zstd" ;
 | string | `KindString` | `'single'` or `"double"` quoted; `Token.Text` excludes the quotes |
 | punctuation | `KindPunct` | Any other single rune, or one of the two-character operators `>=` `<=` `!=` `==` |
 
-**The nineteen keywords**, all reserved:
+**The twenty-three keywords**, all reserved:
 
 ```
 SELECT  FROM  WHERE  AS  OF  TRANSACTION  MATCH
 SHAPE   LIKE  REQUIRE  OPTIONAL  SIMILARITY  WITH  COMPRESSION
 SEARCH  IN  FACET  BY  LIMIT
+ASSERT  RETRACT  VALID  TO
 ```
 
 ### Quoting an identifier
@@ -470,6 +513,57 @@ would otherwise rest entirely on review.
 package that owns what time means. It decides nothing itself, and contains no
 branch — two implementations of a four-row table would drift, and the drift is
 invisible until a query returns the wrong history.
+
+## `Write` and `WriteOp`
+
+```go
+type Write struct {
+	Op            WriteOp
+	Entity        string
+	Attribute     string
+	Value         string // the literal, quotes stripped
+	ValueIsNumber bool
+	From          *int64 // from VALID FROM t, or nil
+	To            *int64 // from TO u, or nil for an open interval
+}
+
+func (w *Write) Interval(now int64) temporal.Interval
+```
+
+```go
+type WriteOp int
+
+const (
+	OpUnset   WriteOp = iota // the zero value, never valid
+	OpAssert                 // the fact held
+	OpRetract                // the fact stopped holding
+)
+
+func WriteOps() []WriteOp     // exactly two
+func (o WriteOp) String() string
+```
+
+`OpUnset` exists so a zero-valued `Write` is detectably wrong rather than
+silently behaving like an assertion — which is the more dangerous of the two to
+get by accident.
+
+`WriteOps` returns the closed pair. It is exported so a caller enumerating the
+verbs walks the language's own list rather than one kept beside it.
+
+⚠ `Interval(now)` resolves an omitted `VALID` clause to `[now, Forever)` — the
+write's own instant — and **not** to `[0, Forever)`. Defaulting to zero would
+silently claim every fact had been true since the beginning of time, and nothing
+about the resulting datom would look unusual.
+
+```go
+var ErrTransactionTimeIsNotYours = errors.New(
+    "ql: a write states when a fact was TRUE, never when it was recorded; " +
+    "transaction time is assigned by the system")
+```
+
+Its text is embedded in the `Expected` field of the `ParseError` a write with a
+`TRANSACTION` clause produces, so the caller gets the position and the reason
+together — rather than an "unexpected token" they will try harder to work around.
 
 ## `Search`
 
@@ -694,7 +788,8 @@ with a reason, and none is a gap someone forgot.
 | Aggregation — `COUNT`, `SUM` | Not in the language. ⚠The one counting a caller can ask for is a FACET over a search result, decided in ADR-021: exact or refused, never estimated. Also `pending` on §27. |
 | ~~Full-text search~~ | **`SEARCH` now parses** and runs against an in-memory index with deterministic ranking. What is still missing is a PERSISTED index and confirmation of candidates against the datoms (`BACKLOG.md` §27 and §20), so a result today reflects what the index believes rather than what is true. |
 | Query syntax inside the search text | Phrases, negation and wildcards are undecided. The text is taken as written and analysed by the same analyzer the index used. |
-| Writes — `ASSERT` / `RETRACT` | Nothing evaluates yet, so a write statement would be syntax with no semantics. |
+| ~~Writes — `ASSERT` / `RETRACT`~~ | **Now in the language**, and runnable against an in-memory session. See [Writing facts](#writing-facts). Durable storage is still `BACKLOG.md` §12. |
+| Stating when a fact was RECORDED | Permanently absent. Transaction time is assigned by the system; a caller who could forge it would make every historical answer a claim rather than a record. |
 | `UPDATE` or `DELETE`, ever | The store appends. A retraction is an assertion, and erasure is the destruction of a key. A verb implying in-place mutation would describe a data model this system does not have. |
 | ~~Quoting a keyword as an identifier~~ | **No longer true.** Backticks make any word an identifier — see [Quoting an identifier](#quoting-an-identifier). It was a real limitation until the `SEARCH` statement needed five more keywords and made it someone's problem. |
 | Re-encoding existing data via a policy | Every block records how it was written. A policy sets what the **next** write produces; there is no scope value meaning "and rewrite what exists". |

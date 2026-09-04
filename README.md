@@ -13,6 +13,75 @@ and "what did we believe then" stay separately answerable — forever.
 
 ---
 
+## Quick start — create records, read them back, search them
+
+Go 1.26 or newer. No server to start, nothing to configure.
+
+```bash
+git clone git@github.com:atvirokodosprendimai/sdev1.git
+cd sdev1
+
+go run ./cmd/sdev1-ql \
+  --statements "ASSERT planet-7 name = 'Kepler-7b'" \
+  --statements "ASSERT planet-7 class = 'gas giant' VALID FROM 100" \
+  --statements "ASSERT planet-7 description = 'a hot inflated giant'" \
+  --statements "ASSERT planet-9 name = 'Kepler-9c'" \
+  --statements "ASSERT planet-9 class = 'gas giant'" \
+  --statements "ASSERT planet-9 description = 'a cool distant giant'" \
+  --statements "SELECT * FROM planet-7" \
+  --statements "SELECT * FROM planet-7 AS OF 50" \
+  --statements "SEARCH 'giant' IN description FACET BY class LIMIT 5" \
+  --statements "RETRACT planet-7 class = 'gas giant'" \
+  --statements "SELECT class FROM planet-7"
+```
+
+Abridged output — the writes echo back, then:
+
+```
+SELECT * FROM planet-7
+  planet-7   class        gas giant
+  planet-7   description  a hot inflated giant
+  planet-7   name         Kepler-7b
+
+SELECT * FROM planet-7 AS OF 50
+  no rows
+
+SEARCH 'giant' IN description FACET BY class LIMIT 5
+  1. planet-7     score 3.219
+  2. planet-9     score 3.219
+  facet class (2 matched)
+    gas giant      2
+
+RETRACT planet-7 class = 'gas giant'
+  retracted  planet-7 class = gas giant
+  valid   [1788555023240962263, ∞)
+  txn     1788555023240962263.0@1:00#7
+
+SELECT class FROM planet-7
+  no rows
+```
+
+Four things in that transcript are the whole design, working:
+
+- **`AS OF 50` returns nothing.** The `class` fact was asserted `VALID FROM 100`,
+  so at instant 50 it had not started being true. Time travel is a clause, not a
+  separate verb.
+- **The transaction identifier is assigned by the system**, and you cannot state
+  it. `VALID FROM 100` backdates when the fact was *true*; nothing backdates when
+  it was *recorded*.
+- **`RETRACT` does not delete.** It appends a datom that stops the fact holding —
+  which is why the last `SELECT` returns nothing while the log still has every
+  version.
+- **The search index was fed by the writes**, not by anything separate, and the
+  facet counts only what a caller can actually see.
+
+Statements also come from a file (`--file`) or standard input. Add `--tenant N`
+to write into a different tenant's subtree.
+
+> ⚠ **This is an in-memory session, not a database.** Everything is lost when the
+> process exits — there is no storage engine yet. It exists so the decisions can
+> be *watched working* rather than only read about. See `internal/core/session`.
+
 ## What you can actually do today
 
 **Short version: you can parse any query, and run search and addressing in
@@ -26,12 +95,13 @@ engine.**
 | `SEARCH … IN … FACET BY … LIMIT …` | **parses + runs** | Against an **in-memory** index: real ranking, real facets, erasure honoured. Not persisted. |
 | Backtick-quoted identifiers — `` `limit` `` | **works** | Any keyword is addressable as an attribute name. |
 | Placing an entity in the trie | **runs** | `cmd/sdev1-addr`, end to end, no network. |
-| **Writing a fact — `ASSERT` / `RETRACT`** | ❌ **not in the language** | The write *model* exists in Go (`command.Transaction`), but there is no statement. Decided, not built. |
+| `ASSERT … VALID FROM … TO …` / `RETRACT …` | **parses + runs** | Creates and retracts facts in the in-memory session. Valid time is yours; **transaction time is never** — stating it is a parse error. |
+| Reading a fact back, at any instant | **runs** | `SELECT … AS OF …` against the session, through the real visibility predicate. |
 | **`INSERT` / `UPDATE` / `DELETE`** | ❌ **will never exist** | The store appends. An update is an assertion, a delete a retraction, an erasure a destroyed key. |
 | **Links — `relate`, `related`, references between entities** | ❌ **do not exist** | `Datom.Value` is untyped bytes, so a reference is indistinguishable from a string. Nothing can traverse. |
 | **Taxonomies / hierarchies** | ❌ **do not exist** | They need links first. Once links are bitemporal datoms, "what did the hierarchy look like in March" falls out — but none of it is built. |
 | **Joins, `AND`/`OR`, `ORDER BY`, `COUNT`** | ❌ | See the query guide's boundary table for which are decisions and which are gaps. |
-| Storing anything on a disk | ❌ | No storage engine. This is the blocker under almost everything else. |
+| Storing anything on a disk | ❌ | No storage engine — the session is in memory and loses everything on exit. This is the blocker under almost everything else. |
 | Reading a stored fact back | ❌ | No query evaluator. |
 | A server, a cluster, a network | ❌ | No transport. Everything is in-process. |
 
@@ -306,16 +376,20 @@ SELECT `limit`, `in` FROM planet-7
 WITH COMPRESSION zstd
 ```
 
-⚠ **There is no way to write a fact.** No `ASSERT`, no `RETRACT`, and by decision
-never an `UPDATE` or a `DELETE`. ⚠ **And there are no links** — no `relate`, no
-references between entities, so nothing can be traversed and there are no
-taxonomies. Both are real gaps, not omissions from this list.
-
-Parse any of the above today:
-
-```bash
-go test ./internal/core/ql/... -run TestSearchRoundTripsThroughTheAST -v
+```sql
+-- Create and retract facts. Valid time is yours; transaction time is never.
+ASSERT planet-7 mass = 5972
+ASSERT planet-7 class = 'terrestrial' VALID FROM 100
+ASSERT planet-7 class = 'terrestrial' VALID FROM 100 TO 200
+RETRACT planet-7 class = 'terrestrial' VALID FROM 500
 ```
+
+⚠ **There are no links** — no `relate`, no references between entities — so
+nothing can be traversed and there are no taxonomies. That is a real gap, not an
+omission from this list. `Datom.Value` is untyped bytes, so a reference cannot be
+told from a string.
+
+Run any of the above with `cmd/sdev1-ql` — see the [quick start](#quick-start--create-records-read-them-back-search-them).
 
 Because time is a clause, a **per-leg** qualifier costs nothing extra — match on
 mass as it stood at one instant and nickname as it stood at another. Under a verb

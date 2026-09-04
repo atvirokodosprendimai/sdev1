@@ -729,6 +729,32 @@ thing turns up in an index.
 cheaply as a plaintext one. That is the price of erasure reaching the index, it
 is accepted deliberately, and it is entirely unquantified.
 
+### §28 — Writes reach memory and stop there
+
+**Source:** ADR-022 (`docs/adr/ADR-022-write-statements.md`), Out of Scope; and
+both its task files.
+
+`ASSERT` and `RETRACT` parse and run, and `cmd/sdev1-ql` shows the whole loop
+working. Everything after that is open.
+
+**Durability** (§12). The session holds datoms in a map and loses them on exit.
+This is the same storage-engine blocker as everywhere else, arriving from a new
+direction.
+
+**Several attributes in one statement.** `ASSERT planet-7 mass = 1, radius = 2`
+does not parse. It stays inside ADR-003's one-entity boundary and is purely a
+grammar question, deferred only to keep ADR-022 about time rather than syntax.
+
+**A write tool on the agent surface** (§25). ADR-013 already refuses `update` and
+`delete` at registration; now there is finally something for that refusal to
+point at, and the tool it should offer instead exists.
+
+⚠ **And the constraint that must survive contact with the real engine:** the
+session must not become the specification. It builds only on packages the records
+govern and adds no rule of its own, so the engine has to agree with the RECORDS.
+The failure here is slow and looks like progress — somebody adds a convenience to
+the session, the engine copies it, and a rule nobody wrote down is what runs.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.

@@ -54,6 +54,10 @@ var keywords = map[string]bool{
 	// Added for the SEARCH statement. These are ordinary English words, which
 	// is exactly why quoted identifiers had to exist first.
 	"SEARCH": true, "IN": true, "FACET": true, "BY": true, "LIMIT": true,
+
+	// Added for the write statements. Quoting already existed by the time these
+	// arrived, so they cost nothing — which is the earlier decision paying off.
+	"ASSERT": true, "RETRACT": true, "VALID": true, "TO": true,
 }
 
 // IdentQuote surrounds an identifier that would otherwise lex as a keyword.

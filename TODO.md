@@ -60,7 +60,22 @@ unimplementable.
 | **§25** | Serve the agent surface over MCP, rate-limit it, and report what it did. Also needs the SDK dependency, pinned exactly |
 | **§26** | Mount the filesystem projection. Also needs a FUSE library — a portability decision, not a dependency bump — and enumeration from §20 |
 | **§8** | Test a real domain against the one-entity transaction boundary. Until something real is modelled against it, the boundary is reasoned rather than validated |
-| **§27** | Build the search index, rank results, and add the `SEARCH` grammar. ⚠A result must be confirmed against the datoms before it is returned — the rule that decays quietest, because skipping it makes every search faster and the damage shows only on data that changed |
+| **§27** | Persist the search index and confirm candidates against the datoms. ⚠The confirmation is the rule that decays quietest, because skipping it makes every search faster and the damage shows only on data that changed |
+| **§28** | Make writes durable. `ASSERT`/`RETRACT` run against an in-memory session today and lose everything on exit |
+
+## The biggest gap of all
+
+**There are no links.** No `relate`, no references between entities, so nothing
+can be traversed and there are no taxonomies. `Datom.Value` is untyped bytes, so
+a reference cannot be told from a string.
+
+⚠ The interesting part is not the value type — it is **traversal in time**. Once
+links are bitemporal datoms, "what did this hierarchy look like last March" falls
+out for free, but only if every hop of a traversal resolves at the SAME instant.
+Resolving the root at `t` and its children at "now" produces a tree that never
+existed, and nothing about the answer looks wrong. Cycles need an answer too.
+
+That is a record nobody has written yet.
 
 ---
 
