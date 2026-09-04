@@ -327,6 +327,36 @@ means the tail's entries cannot be dropped the moment the segment appears. The
 safe shape is that both are reachable until no snapshot predates the swap — and
 that is a reclamation question ADR-017 deliberately did not open.
 
+### §16 — Nothing measures how slow a degraded read is
+
+**Source:** ADR-019 (`docs/adr/ADR-019-chaos-and-the-failure-catalogue.md`), Out of
+Scope; and both its task files.
+
+The failure catalogue records whether a fault is survived. It says nothing about
+what surviving costs, and for a read that is most of the operational story.
+
+ADR-006 already names the shape: reading one block of a damaged stripe means `k`
+fragment fetches across `k` failure domains instead of one local read. That is a
+large constant, and it arrives exactly when a cluster is already degraded and
+already under repair traffic — so the three interact and none of them is
+measured.
+
+⚠ The trap is that "recovers" reads like "is fine". A stripe that reconstructs
+correctly but takes fifty times as long has not failed by any assertion in the
+catalogue, and has failed by every measure a caller cares about. A system whose
+degraded mode is correct and unusably slow looks healthy to every gate in this
+corpus.
+
+Three things want numbers, and none of them can be taken yet because nothing
+serves a read: the latency multiplier of a degraded read against an intact one;
+how that multiplier moves as repair traffic competes for the same bandwidth
+(§3); and whether ADR-015's admission control sheds the right work when both are
+happening at once, or sheds the repair that would end the degradation.
+
+Whatever closes this should extend the catalogue rather than sit beside it — a
+disposition says whether the data came back, and a cost column would say what it
+took, which is the pair an operator actually needs.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
