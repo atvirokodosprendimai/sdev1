@@ -389,6 +389,36 @@ outlives its destruction, so a shredded subject stays readable on whichever node
 happened to hold it. Any cache needs an invalidation that is part of the shred
 rather than beside it, and "eventually" is not good enough for an erasure.
 
+### §18 — There is no transport, and nothing distributes a route
+
+**Source:** ADR-008 (`docs/adr/ADR-008-prefix-routing.md`), Out of Scope; and both
+its task files.
+
+ADR-008 decides what a route MEANS, how a lookup resolves one, and what a stale
+one does. It decides nothing about how bytes move between machines, which leaves
+three questions and one whole missing layer.
+
+**The transport itself.** Framing, connection management, timeouts, and how a
+request identifies the leaf it is for. This is the single largest unbuilt piece
+of the system and several other records wait behind it — ADR-018's read-ahead,
+ADR-019's composed chaos suite, and anything that measures a degraded read (§16).
+
+⚠ Whatever carries a redirect must make it structurally impossible to mistake
+for a successful answer. ADR-008 enforces that in Go's type system, and a wire
+format that flattens both into one message shape would give the property back.
+
+**How a route reaches a node.** Gossip, a control plane, or something derived
+from the topology map — each has a different staleness profile, and ADR-008 is
+deliberately correct under all of them because a stale route is a redirect rather
+than an error. So this is a performance decision rather than a correctness one,
+which is unusual enough to be worth saying: choosing badly here costs hops, not
+answers.
+
+**When a node may forget.** A node must know where a leaf WENT in order to
+redirect for it, so it holds routing state about leaves it no longer serves. That
+state has to age out or it grows forever, and nothing says when. Forgetting too
+early turns a redirect back into an error for whichever client was slowest.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
