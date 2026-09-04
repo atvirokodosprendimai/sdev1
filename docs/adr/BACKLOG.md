@@ -574,6 +574,36 @@ worst case at the moment the power goes, which correlates with load — so the
 exposure is largest exactly when a correlated failure is most likely, and an
 average hides that completely.
 
+### §24 — Nothing caches a prefetched block, evicts one, or decides when to prefetch at all
+
+**Source:** ADR-018 (`docs/adr/ADR-018-read-ahead.md`), Out of Scope; and both its
+task files.
+
+ADR-018 decides WHICH fragments a read should ask for and whether it may. Three
+things past that are open, and they interact.
+
+**The cache.** Fetched blocks have to live somewhere and be found again. ⚠ The
+constraint ADR-018 imposes must survive: a read must still work with every
+prefetched block evicted. If it stops working, the prefetch has become
+load-bearing and the failure appears only under memory pressure — which is
+precisely when eviction happens, so the bug and its trigger arrive together.
+
+**Eviction.** Least-recently-used is the obvious answer and it is wrong for a
+sequential scan, which evicts exactly what it is about to read. A scan-resistant
+policy is a real decision and it needs a workload to choose against.
+
+**When to prefetch at all.** Prefetching a random-access read is pure waste: it
+pulls `k` fragments per block for blocks nobody will ask for, and it spends the
+read budget doing it. Detecting sequentiality is the usual answer and it is a
+heuristic — so it will be wrong sometimes, and what it costs when wrong is the
+part worth deciding rather than the detection itself.
+
+**And the balance tension ADR-018 recorded.** Choosing the nearest `k` is right
+for latency and wrong for load distribution: every reader near a node picks the
+same node. Spreading instead would raise latency for everyone. Neither is
+obviously right, and the answer probably depends on whether the cluster is closer
+to its bandwidth ceiling (§22) or to its latency target.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
