@@ -41,7 +41,7 @@ jump backwards.
 
 ```bash
 set -o pipefail
-go test ./internal/core/hlc/... -run 'TestNow|TestLogical|TestMerge|TestTimestamp' -count=1 -race 2>&1 | tee /tmp/adr002-t1.out \
+go test ./internal/core/hlc/... -run 'TestNow|TestLogical|TestMerge|TestTimestamp|TestDecode' -count=1 -race 2>&1 | tee /tmp/adr002-t1.out \
   && ! grep -qE "no tests to run|matched no packages|^FAIL|^--- FAIL" /tmp/adr002-t1.out
 ```
 
@@ -72,6 +72,8 @@ a node, so a data race here is a correctness defect and not a performance note.
 
 - 2026-09-04 · bf64efd* · mutant killed · exit 1 · `internal/core/hlc/hlc.go` · when the wall clock is frozen or has moved backwards the logical counter is the only thing that advances; without it Now returns the same value twice and an append-only log records two events at one position. TestNowIsStrictlyMonotonic must go red · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · covers:the monotonicity invariant
 - 2026-09-04 · bf64efd* · mutant killed · exit 1 · `internal/core/hlc/hlc.go` · reading the host clock directly makes every backwards-jump and frozen-clock property untestable, which is the whole reason the reading is injected; TestNowSurvivesBackwardsWallClock must go red · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · covers:the injected wall-clock function
+- 2026-09-04 · 4f1c065* · mutant killed · exit 1 · `internal/core/hlc/hlc.go` · re-bound to the widened fence: without the logical increment Now returns the same value twice on a frozen or backwards clock, and an append-only log records two events at one position · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · covers:the monotonicity invariant
+- 2026-09-04 · 4f1c065* · mutant killed · exit 1 · `internal/core/hlc/hlc.go` · re-bound to the widened fence: reading the host clock directly makes every backwards-jump and frozen-clock property untestable · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · covers:the injected wall-clock function
 
 ## Invariants
 
@@ -100,3 +102,6 @@ Alternatives, and reintroducing it changes what this package is.
 - 2026-09-04 · bf64efd* · exit 0 · `set -o pipefail …` · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · ms:1639
 - 2026-09-04 · bf64efd* · exit 0 · `set -o pipefail …` · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · ms:1606
 - 2026-09-04 · bf64efd* · exit 0 · `set -o pipefail …` · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · ms:1610
+- 2026-09-04 · 4f1c065* · exit 0 · `set -o pipefail …` · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · ms:1638
+- 2026-09-04 · 4f1c065* · exit 0 · `set -o pipefail …` · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · ms:1651
+- 2026-09-04 · 4f1c065* · exit 0 · `set -o pipefail …` · acceptance-sha256:5a275488351a78a9a7686ccf7f81d9407ad74a10cfa9ae4298b19b7a23f21e0a · ms:1615
