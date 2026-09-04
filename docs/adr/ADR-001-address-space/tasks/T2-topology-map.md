@@ -31,7 +31,7 @@ rather than pointer walks.
 
 ## Ordered Steps
 
-1. [S1] Write the failing tests first (TDD red): `TestLoadRejectsUnknownVersion`, `TestLoadRejectsDepthOutOfRange`, `TestLevelsAreDataNotTypes`, `TestLoadRejectsNodeAtUndeclaredLevel`, `TestIntervalsNestStrictly`, `TestDistanceIsCommonAncestorLevel`, `TestAncestorAtLevelIsIntervalLookup`, `TestNestedAndIntervalFormsRoundTrip`, `TestMapDeclaresNoObjectLocations`. Run the Acceptance fence and confirm it is red. [proof: acceptance]
+1. [S1] Write the failing tests first (TDD red): `TestLoadRejectsUnknownVersion`, `TestLoadRejectsDepthOutOfRange`, `TestLevelsAreDataNotTypes`, `TestLoadRejectsNodeAtUndeclaredLevel`, `TestIntervalsNestStrictly`, `TestDistanceIsCommonAncestorLevel`, `TestAncestorAtLevelIsIntervalLookup`, `TestAncestorAtLevelRefusesWhenLevelIsSkipped`, `TestNestedAndIntervalFormsRoundTrip`, `TestMapDeclaresNoObjectLocations`. Run the Acceptance fence and confirm it is red. [proof: acceptance]
 2. [S2] Define `Levels []string` — the ordered label list, broadest first. The default map declares `universe, planet, datacenter, rack, server, disk`, but the list is **data**: a deployment may insert `row` or `pod`, or drop `universe`, with no change to this package.
 3. [S3] Define `Node{ Name string; LevelIdx int; Lft, Rgt int; Weight int }` and `Map{ Version int; Depth uint8; Levels []string; Nodes []Node }`, with `Nodes` held flat and sorted by `Lft` so it is binary-searchable and contains no pointers.
 4. [S4] Implement the nested-set numbering: a depth-first traversal of the authored tree assigning `Lft` on entry and `Rgt` on exit. Containment is then `a.Lft < b.Lft && b.Rgt < a.Rgt`, with no traversal at query time.
@@ -60,6 +60,7 @@ go test ./internal/core/topology/... -run 'TestLoad|TestMap|TestLevels|TestDista
 | `TestIntervalsNestStrictly` | `internal/core/topology/topology_test.go` | Every child's interval is strictly inside its parent's, and sibling intervals are disjoint — the property every later range comparison rests on | — | S4 |
 | `TestDistanceIsCommonAncestorLevel` | `internal/core/topology/topology_test.go` | Same-rack is nearer than same-datacenter, which is nearer than same-planet; and `Distance` is symmetric. Exercises the two-rack fixture S8 writes | — | S6, S8 |
 | `TestAncestorAtLevelIsIntervalLookup` | `internal/core/topology/topology_test.go` | Two servers in one rack share an ancestor at level `rack`; two in different racks do not — the assertion ADR-004's failure domains will rest on | — | S5 |
+| `TestAncestorAtLevelRefusesWhenLevelIsSkipped` | `internal/core/topology/topology_test.go` | A node with NO ancestor at the requested level is refused rather than assigned the nearest earlier one. Added 2026-09-04 after a mutation dropping the right bound from `Node.Contains` SURVIVED: every server in the fixture sits inside a rack, so nothing discriminated | — | S5 |
 | `TestNestedAndIntervalFormsRoundTrip` | `internal/core/topology/topology_test.go` | Property test over generated trees: authored-nested → intervals → reconstructed-nested is the identity. The falsifier for the two-representation defect | — | S4, S7 |
 | `TestMapDeclaresNoObjectLocations` | `internal/core/topology/topology_test.go` | The decoded `Map` exposes no per-key or per-object field | — | S3 |
 
@@ -73,6 +74,14 @@ go test ./internal/core/topology/... -run 'TestLoad|TestMap|TestLevels|TestDista
 | 4 — it is used | Nothing measures this yet. |
 
 ## Mutation Log
+
+- 2026-09-04 · 90c3039* · mutant killed · exit 1 · `internal/core/topology/load.go` · a map written by a future release must be refused whole, never partially read; accepting any non-negative version must turn TestLoadRejectsUnknownVersion red · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · covers:the rejection of an unknown version
+- 2026-09-04 · 90c3039* · mutant killed · exit 1 · `internal/core/topology/load.go` · levels are data, so a typo in a level label is a load-time error rather than a build error; dropping the check silently places nodes at level 0 and must turn TestLoadRejectsNodeAtUndeclaredLevel red · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · covers:the level list being data rather than Go types
+- 2026-09-04 · 90c3039* · mutant survived · exit 0 · `internal/core/topology/topology.go` · containment is what every ancestry and failure-domain answer rests on; dropping the right bound makes unrelated later subtrees look contained and must turn TestAncestorAtLevelIsIntervalLookup red · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · covers:the interval containment relation
+  ```
+  the fence passed with the mechanism broken; it may not materialize, compile, load, or assert on the changed path
+  ```
+- 2026-09-04 · 90c3039* · mutant killed · exit 1 · `internal/core/topology/topology.go` · second attempt: the first mutant SURVIVED because every server in the fixture sits inside a rack, so the right bound never discriminated. TestAncestorAtLevelRefusesWhenLevelIsSkipped adds a server with no rack, where dropping the bound returns a wrong rack instead of an error · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · covers:the interval containment relation
 
 ## Invariants
 
@@ -110,3 +119,8 @@ format can express — whether it should is ADR-004's call.
 - Which level a durability policy spreads across — that is ADR-004. This task only makes the question expressible, by giving levels names and giving nodes intervals.
 
 ## Verification Log
+- 2026-09-04 · 90c3039* · exit 0 · `set -o pipefail …` · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · ms:478
+- 2026-09-04 · 90c3039* · exit 0 · `set -o pipefail …` · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · ms:486
+- 2026-09-04 · 90c3039* · exit 0 · `set -o pipefail …` · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · ms:447
+- 2026-09-04 · 90c3039* · exit 0 · `set -o pipefail …` · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · ms:444
+- 2026-09-04 · 90c3039* · exit 0 · `set -o pipefail …` · acceptance-sha256:02a1a68440ab7e93a54b03fd0df4f48f978079b85f8d8406b3db61b499507cdd · ms:445

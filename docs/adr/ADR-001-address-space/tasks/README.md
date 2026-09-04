@@ -27,7 +27,7 @@ it.
 | ID | Title | Status | Covers | Acceptance |
 |----|-------|--------|--------|------------|
 | T1 | The key type, the leaf identifier, and the byte-wise descent | done | — | `go test ./internal/core/addr/... -run 'TestFanOut\|TestDescend\|TestLeafID'` |
-| T2 | The topology map and its wire format | pending | — | `go test ./internal/core/topology/... -run 'TestLoad\|TestMap'` |
+| T2 | The topology map as a nested-set interval tree over declared level labels | done | — | `go test ./internal/core/topology/... -run 'TestLoad\|TestMap\|TestLevels\|TestDistance\|TestInterval\|TestAncestor\|TestNested'` |
 | T3 | Deterministic placement from a leaf identifier and a topology map | pending | — | `go test ./internal/core/placement/... -run 'TestResolve'` |
 | T4 | An operator command that shows a key's descent and placement | pending | — | `go test ./cmd/sdev1-addr/... -run 'TestCommand'` then build and run the binary |
 
