@@ -10,9 +10,14 @@ import (
 
 const depth = uint8(1)
 
+// testTenant is an arbitrary tenant. It is named rather than defaulted because
+// the whole point of the tenant parameter is that a caller must say which one
+// they mean.
+var testTenant = addr.TenantFromUint(42)
+
 func newTx(t *testing.T, entity string) *Transaction {
 	t.Helper()
-	tr, err := New(entity, depth)
+	tr, err := New(testTenant, entity, depth)
 	if err != nil {
 		t.Fatalf("New(%q): %v", entity, err)
 	}
@@ -30,7 +35,7 @@ func TestNewBindsOneEntity(t *testing.T) {
 	if tr.Entity() != "alice" {
 		t.Errorf("Entity() = %q, want %q", tr.Entity(), "alice")
 	}
-	want, err := addr.Descend(addr.KeyOf("alice"), depth)
+	want, err := addr.Descend(addr.KeyOf(testTenant, "alice"), depth)
 	if err != nil {
 		t.Fatalf("Descend: %v", err)
 	}
@@ -38,8 +43,42 @@ func TestNewBindsOneEntity(t *testing.T) {
 		t.Errorf("Leaf() = %v, want %v", tr.Leaf(), want)
 	}
 
-	if _, err := New("", depth); !errors.Is(err, ErrNoEntity) {
-		t.Errorf("New(\"\") error = %v, want ErrNoEntity", err)
+	if _, err := New(testTenant, "", depth); !errors.Is(err, ErrNoEntity) {
+		t.Errorf("New with an empty entity: error = %v, want ErrNoEntity", err)
+	}
+}
+
+// TestCommandRequiresATenant checks a transaction names its tenant, so a caller
+// cannot land in a default one by omission.
+//
+// The parameter is required rather than defaulted because a KeyOf with a default
+// tenant is how multi-tenancy quietly becomes single-tenancy with an extra
+// field: every call site compiles, everything lands in tenant zero, and nothing
+// reports it.
+// ⚠ It runs at depth TenantBytes, not at the package's depth of 1. Below
+// TenantBytes tenants SHARE leaves — that is documented behaviour and
+// appropriate for a small deployment, so a test asserting isolation at depth 1
+// would be asserting something the design does not claim.
+func TestCommandRequiresATenant(t *testing.T) {
+	const isolating = uint8(addr.TenantBytes)
+
+	a, err := New(addr.TenantFromUint(1), "shared-name", isolating)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	b, err := New(addr.TenantFromUint(2), "shared-name", isolating)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if a.Leaf() == b.Leaf() {
+		t.Fatalf("the same entity name in two tenants reached one leaf %v — tenants are not isolated",
+			a.Leaf())
+	}
+	if !addr.TenantFromUint(1).TenantSubtree().Contains(a.Leaf()) {
+		t.Errorf("transaction for tenant 1 landed outside tenant 1's subtree")
+	}
+	if !addr.TenantFromUint(2).TenantSubtree().Contains(b.Leaf()) {
+		t.Errorf("transaction for tenant 2 landed outside tenant 2's subtree")
 	}
 }
 
@@ -130,7 +169,7 @@ func TestTransactionResolvesToOneLeaf(t *testing.T) {
 	}
 	want := tr.Leaf()
 	for _, d := range tr.Datoms() {
-		got, err := addr.Descend(addr.KeyOf(d.Entity), depth)
+		got, err := addr.Descend(addr.KeyOf(testTenant, d.Entity), depth)
 		if err != nil {
 			t.Fatalf("Descend(%q): %v", d.Entity, err)
 		}

@@ -13,7 +13,7 @@ import (
 
 func leaf(t *testing.T, entity string) addr.LeafID {
 	t.Helper()
-	l, err := addr.Descend(addr.KeyOf(entity), 1)
+	l, err := addr.Descend(addr.KeyOf(addr.TenantFromUint(1), entity), 1)
 	if err != nil {
 		t.Fatalf("Descend: %v", err)
 	}

@@ -28,7 +28,7 @@ func loadFixture(t *testing.T) topology.Map {
 
 func leafFor(t *testing.T, entity string, depth uint8) addr.LeafID {
 	t.Helper()
-	l, err := addr.Descend(addr.KeyOf(entity), depth)
+	l, err := addr.Descend(addr.KeyOf(addr.TenantFromUint(1), entity), depth)
 	if err != nil {
 		t.Fatalf("Descend(%q, %d): %v", entity, depth, err)
 	}

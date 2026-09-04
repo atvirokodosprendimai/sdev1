@@ -31,13 +31,18 @@ type Transaction struct {
 	datoms []ports.Datom
 }
 
-// New returns a transaction bound to one entity, resolving it to a leaf at the
-// cluster's declared depth.
-func New(entity string, depth uint8) (*Transaction, error) {
+// New returns a transaction bound to one entity within one tenant, resolving it
+// to a leaf at the cluster's declared depth.
+//
+// The tenant is a required parameter rather than a default, and that is
+// deliberate: a constructor with a default tenant is how multi-tenancy quietly
+// becomes single-tenancy with an extra field — every call site compiles,
+// everything lands in tenant zero, and nothing reports it.
+func New(tenant addr.TenantID, entity string, depth uint8) (*Transaction, error) {
 	if entity == "" {
 		return nil, ErrNoEntity
 	}
-	leaf, err := addr.Descend(addr.KeyOf(entity), depth)
+	leaf, err := addr.Descend(addr.KeyOf(tenant, entity), depth)
 	if err != nil {
 		return nil, fmt.Errorf("command: resolving %q: %w", entity, err)
 	}

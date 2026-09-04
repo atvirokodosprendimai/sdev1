@@ -153,6 +153,44 @@ the operation out of scope for this engine.
 cost of leaving this open is bounded, and the cost of guessing wrong in the
 permissive direction is not.
 
+### §10 — Nothing decides what a cluster does with leaves below the durability floor
+
+**Source:** ADR-004 (`docs/adr/ADR-004-durability-policy.md`), Out of Scope.
+
+ADR-004 refuses writes to a leaf holding fewer than `MinSize` durable copies.
+It does not decide what happens next, and "the write is refused" is only half an
+answer: the leaf is still readable, still degraded, and still degrading.
+
+What a decision here must answer: whether the cluster re-replicates
+automatically or waits for an operator, how a leaf below the floor is surfaced
+(an alarm, a status, a refusal message naming the shortfall), whether such a leaf
+is evicted from the read path, and how an operator distinguishes "briefly
+degraded during a restart" from "genuinely short of copies", since the two look
+identical for the first few seconds and demand opposite responses.
+
+### §11 — Tenant identifiers have no allocation, reuse or authorization story
+
+**Source:** ADR-016 (`docs/adr/ADR-016-tenant-prefix.md`), Out of Scope and its
+Follow-up.
+
+ADR-016 makes a tenant the leading bytes of a key and therefore a contiguous
+subtree. It does not decide who assigns those bytes.
+
+Two things are genuinely open. **Allocation and reuse:** a reused identifier
+inherits the previous tenant's subtree, including anything marked but not yet
+swept and anything still present in a coded stripe — so reuse is a data-exposure
+question rather than a bookkeeping one, and the safe answer may be that
+identifiers are never reused. **Authorization:** a tenant boundary is usually
+wanted in order to enforce something, and nothing here enforces anything yet.
+
+⚠ One design constraint is already known and should survive into whatever record
+closes this: a query `AS OF` a past instant must be authorized against the
+CURRENT grant set, never the grants in force at that instant. The symmetry is
+tempting — the data is historical, so why not the permissions — and it is a leak:
+revoking access today would otherwise leave the revoked party able to read last
+year. Grants are naturally datoms in a reserved system tenant, which makes "who
+had access at time T" answerable and makes revocation a retraction.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.

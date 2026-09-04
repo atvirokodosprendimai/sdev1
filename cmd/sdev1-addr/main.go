@@ -32,7 +32,11 @@ func main() {
 // report is the whole answer, and the single source for both output forms so
 // the text and JSON renderings cannot drift apart.
 type report struct {
-	Entity  string    `json:"entity"`
+	Entity         string `json:"entity"`
+	Tenant         string `json:"tenant"`
+	TenantSubtree  string `json:"tenant_subtree"`
+	TenantIsolated bool   `json:"tenant_isolated"`
+
 	Key     string    `json:"key"`
 	Depth   uint8     `json:"depth"`
 	Leaf    string    `json:"leaf"`
@@ -70,6 +74,11 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) int {
 				Usage:    "entity identifier to place",
 				Required: true,
 			},
+			&cli.UintFlag{
+				Name:     "tenant",
+				Usage:    "tenant identifier (0-65535); a tenant owns a contiguous subtree",
+				Required: true,
+			},
 			&cli.StringFlag{
 				Name:  "spread-level",
 				Usage: "level label to spread targets across, e.g. rack",
@@ -84,7 +93,12 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) int {
 			},
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
-			r, err := build(c.String("topology"), c.String("entity"),
+			raw := c.Uint("tenant")
+			if raw > 65535 {
+				return fmt.Errorf("--tenant %d is outside 0-65535; a tenant identifier is %d bytes",
+					raw, addr.TenantBytes)
+			}
+			r, err := build(addr.TenantFromUint(uint16(raw)), c.String("topology"), c.String("entity"),
 				c.String("spread-level"), c.String("from"))
 			if err != nil {
 				return err
@@ -107,7 +121,7 @@ func run(ctx context.Context, args []string, out, errOut io.Writer) int {
 // build computes the whole answer. Every failure is returned rather than
 // printed, so a broken topology exits non-zero: a diagnostic that exits 0 on a
 // bad input is worse than no diagnostic.
-func build(topologyPath, entity, spreadLevel, from string) (report, error) {
+func build(tenant addr.TenantID, topologyPath, entity, spreadLevel, from string) (report, error) {
 	f, err := os.Open(topologyPath)
 	if err != nil {
 		return report{}, fmt.Errorf("open topology: %w", err)
@@ -119,19 +133,24 @@ func build(topologyPath, entity, spreadLevel, from string) (report, error) {
 		return report{}, fmt.Errorf("load topology: %w", err)
 	}
 
-	key := addr.KeyOf(entity)
+	key := addr.KeyOf(tenant, entity)
 	leaf, err := addr.Descend(key, m.Depth)
 	if err != nil {
 		return report{}, fmt.Errorf("descend: %w", err)
 	}
 
 	r := report{
-		Entity: entity,
-		Key:    hex.EncodeToString(key[:]),
-		Depth:  m.Depth,
-		Leaf:   leaf.String(),
-		Levels: m.Levels,
+		Entity:        entity,
+		Tenant:        tenant.String(),
+		TenantSubtree: tenant.TenantSubtree().String(),
+		Key:           hex.EncodeToString(key[:]),
+		Depth:         m.Depth,
+		Leaf:          leaf.String(),
+		Levels:        m.Levels,
 	}
+	// Below TenantBytes tenants share leaves, which is legal and worth saying
+	// out loud rather than letting an operator infer isolation that is not there.
+	r.TenantIsolated = m.Depth >= addr.TenantBytes
 	for i, b := range leaf.Bytes() {
 		level := ""
 		if i < len(m.Levels) {
@@ -174,6 +193,13 @@ func build(topologyPath, entity, spreadLevel, from string) (report, error) {
 func renderText(out io.Writer, r report) error {
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(tw, "entity\t%s\n", r.Entity)
+	fmt.Fprintf(tw, "tenant\t%s\n", r.Tenant)
+	fmt.Fprintf(tw, "tenant subtree\t%s\n", r.TenantSubtree)
+	if r.TenantIsolated {
+		fmt.Fprintf(tw, "tenant isolated\tyes — this depth gives the tenant whole leaves\n")
+	} else {
+		fmt.Fprintf(tw, "tenant isolated\tno — below depth %d tenants share leaves\n", addr.TenantBytes)
+	}
 	fmt.Fprintf(tw, "key\t%s\n", r.Key)
 	fmt.Fprintf(tw, "depth\t%d\n", r.Depth)
 	fmt.Fprintf(tw, "leaf\t%s\n", r.Leaf)

@@ -59,7 +59,14 @@ compile-time constant. Depth is configuration. Scale comes from depth.**
 
 Concretely:
 
-1. A key is the 32-byte SHA-256 digest of the entity identifier. Nothing else is
+1. A key is 32 bytes. ⚠**AMENDED BY ADR-016 (2026-09-04), which invalidates the
+   original clause of this rule.** It read: *"A key is the 32-byte SHA-256 digest
+   of the entity identifier."* It is now `TenantBytes` of tenant identifier,
+   written literally, followed by the leading bytes of the entity's digest. The
+   reasoning below is unchanged and still holds — the entity remains the unit of
+   locality, and everything about one entity still resolves to one leaf — but a
+   tenant now also owns a contiguous subtree. See
+   `docs/adr/ADR-016-tenant-prefix.md`. Nothing else is
    hashed at this level — the entity is the unit of locality, so everything about
    one entity resolves to one leaf.
 2. Descending the trie consumes one byte per level, most significant first.

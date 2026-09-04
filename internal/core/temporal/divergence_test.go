@@ -108,7 +108,7 @@ func generate(rng *rand.Rand, n int, leafID addr.LeafID) []genCase {
 
 func genLeaf(t *testing.T) addr.LeafID {
 	t.Helper()
-	l, err := addr.Descend(addr.KeyOf("divergence"), 1)
+	l, err := addr.Descend(addr.KeyOf(addr.TenantFromUint(1), "divergence"), 1)
 	if err != nil {
 		t.Fatalf("Descend: %v", err)
 	}

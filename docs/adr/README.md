@@ -28,10 +28,12 @@ happened to do.
 
 ## Status of the corpus
 
-The repository is greenfield. At commit `2db614d` it held `README.md`, `LICENSE`
-and `.gitignore` and no Go source. Every record below therefore describes intent
-rather than code that exists, and `Governs:` paths will resolve to nothing until
-the corresponding tasks land. That is expected at this stage and is not drift.
+Four records are **Accepted and implemented**: ADR-001, ADR-002, ADR-003 and
+ADR-016. Their `Governs:` paths resolve, their tasks carry tool-written
+acceptance and mutation evidence, and the packages they name exist and pass
+under the race detector. The remaining records describe intent, and their
+`Governs:` paths will resolve to nothing until their tasks land — which is
+expected at this stage rather than drift.
 
 ## The records
 
@@ -56,7 +58,7 @@ exists, because the choice is encoded in the data itself.
 | ADR-013 | An MCP server exposing the engine as a knowledge graph for agents, built on the official `modelcontextprotocol/go-sdk` | Planned | A public contract whose tool descriptions are the only documentation its callers read. It exposes ADR-011's evaluator rather than becoming a second query surface. The SDK choice deliberately departs from the team-wide Go convention, decided 2026-09-04. |
 | ADR-014 | A FUSE filesystem projection of the store | Planned | A public contract. Bitemporal storage makes it a natively snapshotting filesystem — an entity is a directory, its attributes are files, and a time qualifier is a snapshot path — and per-attribute history falls out of EAVT rather than being built. Like ADR-013 it is a projection over ADR-011's evaluator, not a further query surface. |
 | ADR-015 | Admission control: per-node counters, a declared traffic ceiling, and read shedding by subscription withdrawal | Planned | Determines what every node measures and what it does when it saturates. Shedding is subscription management rather than client routing — a loaded replica withdraws and work stops arriving. Read and write budgets are separate, because a leaf has one writer and a read burst must never be able to stop its writes. |
-| ADR-016 | Tenancy, identity and authorization: a tenant is a leading key prefix, grants are datoms, and a time-travel query is authorized by TODAY's grants | Planned | ⚠**Touches an already-implemented format.** Putting the tenant in the leading key bytes gives each tenant a contiguous subtree, which makes tenant deletion a subtree drop, data residency a placement rule, and per-tenant durability, retention, compression and shred-key namespaces subtree policy — and a hot tenant is absorbed by the depth mechanism that already exists. It cannot be retrofitted: the key layout is written into every datom. ⚠And the trap it must state: a query `AS OF` a past instant is authorized against CURRENT grants, never the grants of that instant — the symmetry is tempting and it is a leak. |
+| [ADR-016](ADR-016-tenant-prefix.md) | The tenant is the leading bytes of the key, so a tenant owns a contiguous subtree | **Accepted** | ⚠**Amends ADR-001's key format, which was already implemented.** A tenant owning a contiguous subtree makes tenant deletion a subtree drop, data residency a placement rule, and per-tenant durability, retention, compression and shred-key namespaces all subtree policy — while a hot tenant is absorbed by the depth mechanism that already exists. Taken now because the repository holds no data: one edit today, a full re-ingest later. Identity, roles and grants remain open (`BACKLOG.md` §11), including the trap that a query `AS OF` a past instant must be authorized by TODAY's grants and never that instant's. |
 
 Records ADR-002 onward are named here so the shape of the corpus is visible, and
 so a session picking one up knows what its neighbours already claim. Naming them
