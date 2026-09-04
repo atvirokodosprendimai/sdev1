@@ -24,6 +24,9 @@ var writablePorts = []string{"ports.Writer", "ports.Store"}
 // the boundary rather than adding another row.
 var exemptions = map[string]string{
 	"internal/core/ports": "declares the ports, so it necessarily names them",
+	"internal/core/leafstore": "IMPLEMENTS the write port rather than consuming one — it is the " +
+		"storage engine on the other side of the boundary, and its compile-time assertion that a " +
+		"leaf satisfies ports.Store is what proves a read model can be handed one safely",
 }
 
 // scanRoot is the tree the guard covers.

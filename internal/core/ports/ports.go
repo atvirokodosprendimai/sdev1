@@ -49,6 +49,17 @@ type Snapshot struct {
 	ValidAt int64
 }
 
+// Query renders the snapshot as the bound query the visibility predicate takes.
+//
+// ⚠ The conversion lives here, and the assembly itself lives in
+// [github.com/atvirokodosprendimai/sdev1/internal/core/temporal.At], so that no
+// store has to name both axes in its own file. A store that built the query
+// itself would be a second place where one instant can be passed into two
+// parameters — the defect this pair of types exists to make unwritable.
+func (s Snapshot) Query() temporal.Query {
+	return temporal.At(s.At, s.ValidAt)
+}
+
 // Reader loads datoms. It has no method that mutates, and that absence is the
 // contract: a read model is handed a Reader and therefore cannot write.
 //

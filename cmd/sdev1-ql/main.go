@@ -15,6 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/leafstore"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/session"
 )
 
@@ -44,6 +45,11 @@ func main() {
 				Usage: "start the clock here and advance it by one per statement, so transaction " +
 					"identifiers are small and reproducible; omit to use the wall clock",
 			},
+			&cli.StringFlag{
+				Name: "dir",
+				Usage: "keep the leaf in this directory, so facts survive the process; " +
+					"omit to hold everything in memory",
+			},
 		},
 		Action: run,
 	}
@@ -62,7 +68,12 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no statements: pass --statements, --file, or pipe them in")
 	}
 
-	s := session.New(addr.TenantFromUint(uint16(cmd.Uint("tenant"))), clock(int64(cmd.Int("clock"))))
+	tenant := addr.TenantFromUint(uint16(cmd.Uint("tenant")))
+	s, err := open(tenant, clock(int64(cmd.Int("clock"))), cmd.String("dir"))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = s.Close() }()
 
 	for _, src := range statements {
 		result, err := s.Run(src)
@@ -74,7 +85,26 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		}
 		report(result)
 	}
+
+	// ⚠ AFTER the statements and before the process exits. Sealing earlier
+	// succeeds while writing nothing, and the run reports success either way —
+	// only a second process reading the directory can tell the difference.
+	if err := s.Seal(ctx); err != nil {
+		return fmt.Errorf("sealing: %w", err)
+	}
 	return nil
+}
+
+// open returns a session, durable when a directory was named.
+func open(tenant addr.TenantID, now func() int64, dir string) (*session.Session, error) {
+	if dir == "" {
+		return session.New(tenant, now), nil
+	}
+	store, err := leafstore.Open(dir, tenant.TenantSubtree())
+	if err != nil {
+		return nil, err
+	}
+	return session.Open(tenant, now, store)
 }
 
 // clock returns the instant source for a session.

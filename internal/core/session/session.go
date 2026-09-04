@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -8,6 +9,7 @@ import (
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/crypt"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/leafstore"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/link"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ql"
@@ -39,6 +41,11 @@ type Session struct {
 	index   *search.Index
 	datoms  map[string][]ports.Datom
 	written []string
+
+	// store is the durable half, or nil for a session that holds everything in
+	// memory. ⚠ A nil store is not a degraded mode: it is what ADR-022 built, and
+	// every statement behaves identically either way.
+	store *leafstore.Store
 }
 
 // New returns a session reading the wall from now.
@@ -54,6 +61,65 @@ func New(tenant addr.TenantID, now func() int64) *Session {
 		index:  search.NewIndex(),
 		datoms: make(map[string][]ports.Datom),
 	}
+}
+
+// Open returns a session backed by a leaf on a disk, rehydrated from what the
+// leaf already holds.
+//
+// ⚠ It reads [leafstore.Store.History] rather than Load. No snapshot returns all
+// of history — an instant on the business axis selects the facts true AT it — so
+// a session rebuilt through a snapshot would silently drop everything that had
+// stopped being true.
+//
+// ★ Rehydration also OBSERVES every identifier it loads. A restart is the same
+// thing as receiving a timestamp from somewhere else, and the clock already knows
+// how to handle that. Without it a session restarted against an earlier clock
+// would mint identifiers that sort BEFORE the facts it just loaded, and a new
+// assertion would quietly lose to an old one.
+func Open(tenant addr.TenantID, now func() int64, store *leafstore.Store) (*Session, error) {
+	s := New(tenant, now)
+	s.store = store
+
+	entities, err := store.Entities()
+	if err != nil {
+		return nil, fmt.Errorf("session: listing the leaf: %w", err)
+	}
+	for _, entity := range entities {
+		history, err := store.History(entity)
+		if err != nil {
+			return nil, fmt.Errorf("session: rehydrating %q: %w", entity, err)
+		}
+		for _, d := range history {
+			s.minter.Observe(d.TxID)
+			if err := s.record(d); err != nil {
+				return nil, fmt.Errorf("session: rehydrating %q: %w", entity, err)
+			}
+		}
+	}
+	return s, nil
+}
+
+// Seal writes everything written since the last seal into a segment.
+//
+// It is a no-op on a session with no store, so a caller need not ask which kind
+// it holds.
+func (s *Session) Seal(ctx context.Context) error {
+	if s.store == nil {
+		return nil
+	}
+	return s.store.Seal(ctx)
+}
+
+// Close releases the store. It does NOT seal.
+//
+// ⚠ Deliberately: ADR-020 says an acknowledged write is held in memory, so an
+// unsealed tail is lost on exit. Sealing here would make the commit point depend
+// on how a process happened to end.
+func (s *Session) Close() error {
+	if s.store == nil {
+		return nil
+	}
+	return s.store.Close()
 }
 
 // Result is what one statement did.
@@ -119,9 +185,33 @@ func (s *Session) write(src string, w *ql.Write) (Result, error) {
 		// Carried through from how it was WRITTEN, never re-derived from bytes.
 		IsReference: w.ValueIsReference,
 	}
-	s.datoms[w.Entity] = append(s.datoms[w.Entity], datom)
-	if !contains(s.written, w.Entity) {
-		s.written = append(s.written, w.Entity)
+	if err := s.record(datom); err != nil {
+		return Result{}, err
+	}
+
+	// The durable half, when there is one. ⚠ It appends to a tail in memory and
+	// touches no disk: ADR-020 fixed the commit point at replicas in memory, and
+	// flushing here would move it as a side effect.
+	if s.store != nil {
+		if err := s.store.Append(context.Background(), datom); err != nil {
+			return Result{}, fmt.Errorf("session: append to the store: %w", err)
+		}
+	}
+
+	return Result{Statement: src, Wrote: &datom}, nil
+}
+
+// record puts a datom into everything this session answers from.
+//
+// ⚠ ONE path, used by a live write and by rehydration alike. A rehydration that
+// restored the datom map and forgot the index is the quietest failure available
+// here: SELECT works, the restart obviously worked, and SEARCH returns nothing
+// with no error anywhere. Having one place to populate is what makes that
+// unwritable rather than merely unlikely.
+func (s *Session) record(d ports.Datom) error {
+	s.datoms[d.Entity] = append(s.datoms[d.Entity], d)
+	if !contains(s.written, d.Entity) {
+		s.written = append(s.written, d.Entity)
 	}
 
 	// Index on the WRITE path, so a search finds facts that were asserted rather
@@ -131,18 +221,17 @@ func (s *Session) write(src string, w *ql.Write) (Result, error) {
 	// prose, and full-text matching them would answer "what links to this" with
 	// something that only looks like an answer — inbound edges are a different
 	// index and a deferred decision, not a side effect of the analyzer.
-	if datom.Assert && !datom.IsReference {
-		for _, term := range search.Analyze(w.Value) {
-			posting := search.Posting{Subject: w.Entity, Term: term, From: id}
+	if d.Assert && !d.IsReference {
+		for _, term := range search.Analyze(string(d.Value)) {
+			posting := search.Posting{Subject: d.Entity, Term: term, From: d.TxID}
 			sealed, err := search.Seal(s.keys, posting)
 			if err != nil {
-				return Result{}, fmt.Errorf("session: index the write: %w", err)
+				return fmt.Errorf("session: index the write: %w", err)
 			}
 			s.index.Add(term, sealed)
 		}
 	}
-
-	return Result{Statement: src, Wrote: &datom}, nil
+	return nil
 }
 
 // selectFrom answers a SELECT at the resolved snapshot.
