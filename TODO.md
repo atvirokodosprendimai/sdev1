@@ -15,7 +15,7 @@ downstream can be honestly finished first, and a stub in place of either would b
 worse than the gap: a component that answers plausibly from nothing cannot be
 told apart from a working one, by a caller or by a test.
 
-### 1 · A storage engine — write a segment to a disk, find a block inside one · §12
+### 1 · A storage engine — put a fact on a disk and read it back · §12
 
 **The bottom half is done.** ADR-024 and `internal/core/segstore` write a run of
 blocks to a file and find one again by key: a segment is built under a temporary
@@ -28,10 +28,17 @@ rename:** nothing is observable in a half-sealed state, so ADR-017's lock-free
 read path holds on real files — an incomplete segment is not addressable rather
 than being guarded by a flag every reader must remember to check.
 
-What is still missing above it: **§15** — when the live tail is sealed, and how a
-manifest naming which segments exist is published. ⚠ The rename makes each FILE
-atomic and says nothing about a SET of them, so publishing a segment and
-publishing the manifest that names it have to be ordered.
+**And a fact now has a wire form.** ADR-025 and `internal/core/datom` encode a run
+of datoms and refuse everything that is not one. ⚠ Its central rule is the one
+worth carrying forward: a partially filled datom has `Assert` false, which is a
+RETRACTION — so a decoder that tolerates a short buffer withdraws a fact and
+reports success. Every refusal is total, and no datoms come back with an error.
+
+What is still missing above both: **§28** — nothing wires the session to any of
+it, so an `ASSERT` still dies with the process. And **§15** — when the live tail
+is sealed, and how a manifest naming which segments exist is published. ⚠ The
+rename makes each FILE atomic and says nothing about a SET of them, so publishing
+a segment and publishing the manifest that names it have to be ordered.
 
 ### 2 · A query evaluator · §20
 
