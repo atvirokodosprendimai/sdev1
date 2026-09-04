@@ -26,6 +26,42 @@ func mustRun(t *testing.T, s *Session, src string) Result {
 }
 
 // TestAssertThenSelectReadsItBack is the loop this whole task exists to close.
+// TestWhereFiltersForACaller is this defect stated where a caller meets it.
+//
+// ⚠ `Select.Where` parsed from ADR-011 onward and was evaluated nowhere, so
+// `SELECT * FROM planet-7 WHERE name = "Mars"` returned every attribute of
+// planet-7. No error, no warning, and no way to tell that the question asked was
+// not the question answered.
+func TestWhereFiltersForACaller(t *testing.T) {
+	s, _ := newTestSession()
+	mustRun(t, s, `ASSERT planet-7 name = "Terra"`)
+	mustRun(t, s, `ASSERT planet-7 class = "terrestrial"`)
+
+	narrow := mustRun(t, s, `SELECT * FROM planet-7 WHERE name = "Mars"`)
+	if len(narrow.Rows) != 0 {
+		t.Errorf("a predicate that matches nothing returned %d rows; the clause is being ignored",
+			len(narrow.Rows))
+	}
+
+	// The control: a predicate that DOES match must still return the rows, or
+	// "filters everything" would pass the assertion above.
+	wide := mustRun(t, s, `SELECT * FROM planet-7 WHERE name = "Terra"`)
+	if len(wide.Rows) != 2 {
+		t.Errorf("a predicate that matches returned %d rows, want both attributes", len(wide.Rows))
+	}
+
+	// The published guide's shape: the predicate names an attribute the
+	// projection does not return.
+	guide := mustRun(t, s, `SELECT name FROM planet-7 WHERE class = "terrestrial"`)
+	if len(guide.Rows) != 1 || guide.Rows[0].Attribute != "name" {
+		t.Errorf("SELECT name ... WHERE class = ... returned %+v, want just the name row", guide.Rows)
+	}
+	miss := mustRun(t, s, `SELECT name FROM planet-7 WHERE class = "gas giant"`)
+	if len(miss.Rows) != 0 {
+		t.Errorf("the same query with a non-matching class returned %d rows", len(miss.Rows))
+	}
+}
+
 func TestAssertThenSelectReadsItBack(t *testing.T) {
 	s, _ := newTestSession()
 

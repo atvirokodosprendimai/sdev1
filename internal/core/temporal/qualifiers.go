@@ -1,6 +1,11 @@
 package temporal
 
-import "github.com/atvirokodosprendimai/sdev1/internal/core/tx"
+import (
+	"math"
+
+	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
+)
 
 // Query carries a caller's two time qualifiers, each independently optional.
 //
@@ -52,6 +57,32 @@ type Query struct {
 // [ResolveQualifiers], which applies ADR-002 rule 6's table.
 func At(id tx.TxID, instant int64) Query {
 	return Query{AsOf: &id, ValidAt: &instant}
+}
+
+// Bounds renders a RESOLVED query as the two concrete values a store's snapshot
+// takes: a transaction identifier and a business instant.
+//
+// ★ It exists here for the same reason [At] does — turning a query into a
+// snapshot means handling both axes, and this package is the one place that may.
+//
+// ⚠ An OPEN system axis becomes the LARGEST identifier. A snapshot takes a bound
+// and cannot say "everything committed", so the bound that excludes nothing is the
+// maximum; [Visible] refuses a datom whose identifier EXCEEDS the bound, and
+// nothing exceeds a maximum clock reading.
+//
+// ⚠ An unbound business axis is REFUSED — ok is false — rather than rendered as
+// zero. Zero is the epoch, which is a different question, not an absent one, and a
+// caller handed it would silently ask about the beginning of time. A query that
+// has been through [ResolveQualifiers] always has one.
+func (q Query) Bounds() (id tx.TxID, instant int64, ok bool) {
+	if q.ValidAt == nil {
+		return tx.TxID{}, 0, false
+	}
+	id = tx.TxID{HLC: hlc.Timestamp{Wall: math.MaxInt64, Logical: math.MaxUint32}}
+	if q.AsOf != nil {
+		id = *q.AsOf
+	}
+	return id, *q.ValidAt, true
 }
 
 func ResolveQualifiers(q Query, now int64) Query {

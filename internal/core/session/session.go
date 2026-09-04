@@ -8,6 +8,7 @@ import (
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/crypt"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/eval"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/leafstore"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/link"
@@ -235,51 +236,77 @@ func (s *Session) record(d ports.Datom) error {
 }
 
 // selectFrom answers a SELECT at the resolved snapshot.
+// ★ There is no projection here any more. ADR-027 owns what a SELECT returns, and
+// this hands the statement to it — two implementations of one thing drift, and
+// the one that drifts is whichever nobody is reading.
 func (s *Session) selectFrom(src string, sel *ql.Select) (Result, error) {
-	resolved := sel.Time.Resolve(s.now())
-
-	wanted := make(map[string]bool, len(sel.Attributes))
-	for _, a := range sel.Attributes {
-		wanted[a] = true
+	rows, err := eval.Select(context.Background(), s.reader(), sel, s.now())
+	if err != nil {
+		return Result{}, err
 	}
 
-	// Latest visible datom per attribute, by transaction order.
-	latest := make(map[string]ports.Datom)
-	for _, d := range s.datoms[sel.Entity] {
-		if len(wanted) > 0 && !wanted[d.Attribute] {
-			continue
+	result := Result{Statement: src}
+	for _, r := range rows {
+		result.Rows = append(result.Rows, Row{
+			Entity:    r.Entity,
+			Attribute: r.Attribute,
+			Value:     string(r.Value),
+			TxID:      r.TxID,
+		})
+	}
+	return result, nil
+}
+
+// reader returns what a statement is evaluated against.
+//
+// ★ With a store, a SELECT costs ONE entity read rather than the leaf this
+// session happens to be holding. Without one, the session's own datoms are served
+// through the same port, so a statement takes the same path either way.
+func (s *Session) reader() ports.Reader {
+	if s.store != nil {
+		return s.store
+	}
+	return memoryReader{s}
+}
+
+// memoryReader serves the session's own datoms as a [ports.Reader].
+//
+// ⚠ It filters by the snapshot, because that is what the port promises. A reader
+// that returned everything would work only because [eval.Select] filters again,
+// and would be wrong for any other caller.
+type memoryReader struct{ s *Session }
+
+func (m memoryReader) Load(_ context.Context, entity string, at ports.Snapshot) ([]ports.Datom, error) {
+	q := at.Query()
+	var out []ports.Datom
+	for _, d := range m.s.datoms[entity] {
+		if temporal.Visible(d.Valid.From, d.Valid.To, d.TxID, q) {
+			out = append(out, d)
 		}
-		if !temporal.Visible(d.Valid.From, d.Valid.To, d.TxID, resolved) {
-			continue
-		}
+	}
+	return out, nil
+}
+
+func (m memoryReader) Attributes(ctx context.Context, entity string, at ports.Snapshot) ([]string, error) {
+	visible, err := m.Load(ctx, entity, at)
+	if err != nil {
+		return nil, err
+	}
+	latest := make(map[string]ports.Datom, len(visible))
+	for _, d := range visible {
 		if prior, seen := latest[d.Attribute]; seen && d.TxID.Compare(prior.TxID) <= 0 {
 			continue
 		}
 		latest[d.Attribute] = d
 	}
-
-	result := Result{Statement: src}
-	names := make([]string, 0, len(latest))
-	for name := range latest {
-		names = append(names, name)
-	}
-	// Sorted so two runs agree; a map would order this differently each time.
-	sort.Strings(names)
-	for _, name := range names {
-		d := latest[name]
-		// ⚠ A retraction is a datom, not an absence — so it SUPPRESSES the
-		// attribute rather than being reported as a value.
-		if !d.Assert {
-			continue
+	out := make([]string, 0, len(latest))
+	for name, d := range latest {
+		if d.Assert {
+			out = append(out, name)
 		}
-		result.Rows = append(result.Rows, Row{
-			Entity:    d.Entity,
-			Attribute: d.Attribute,
-			Value:     string(d.Value),
-			TxID:      d.TxID,
-		})
 	}
-	return result, nil
+	sort.Strings(out)
+	return out, nil
 }
 
 // search answers a SEARCH against the index fed on the write path.

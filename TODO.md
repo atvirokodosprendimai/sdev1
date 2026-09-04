@@ -50,19 +50,32 @@ compaction. ⚠ A read touches every segment in the leaf, which is linear in sea
 count, and that is the cost that makes compaction matter rather than a cost
 this design hides.
 
-### 2 · A query evaluator · §20
+### 2 · A query planner and a similarity metric · §20
 
-Nothing evaluates a statement, plans one, or computes a similarity. The language
-parses and stops.
+**Evaluation is done.** ADR-027 and `internal/core/eval` turn a `SELECT` into rows
+against any `ports.Reader`, so the same statement answers from memory or from a
+leaf and costs ONE entity read either way.
 
-⚠ Three constraints the evaluator inherits and must not quietly re-decide: the
-two-axis defaults table has exactly one implementation; an optional leg that
-matched nothing yields an **unbound** binding rather than dropping the row; and
-the similarity metric and threshold are always stated, never defaulted.
+⚠ **It closed a live defect, and the defect is the lesson.** `WHERE` had parsed
+since ADR-011 and been evaluated nowhere: `SELECT * FROM planet-3 WHERE mass =
+"999"` returned every attribute of planet-3, with no error and no way to tell.
+**A clause that parses and is silently discarded is worse than one that is
+refused** — "not implemented" is an answer a caller can act on.
 
-It also owes an answer to **enumeration** — the language reads a *named* entity
-and cannot list them, which is what leaves the filesystem's root directory
-unimplementable.
+What genuinely remains under this number, each blocked on something real:
+
+- **Planning** — which index, in what order, at what cost. There is no index
+  (§15), and an execution strategy guessed against no storage layer is a guess.
+- **Similarity**, for `MATCH SHAPE`. ⚠ A metric chosen against no corpus is a
+  number nobody has reason to believe, and this repository has no corpus.
+- **Enumeration** — the language reads a NAMED entity and cannot list them, which
+  is what leaves the filesystem's root directory unimplementable. A leaf can now
+  list its own entities; doing it from the language across leaves needs a planner
+  and a routing decision.
+- **`SEARCH` and `TRAVERSE` through the reader** — they answer from session state,
+  and the split is invisible until a statement disagrees with itself.
+- **Multi-hop traversal syntax**, which must keep the per-leg time clause rather
+  than losing it in the recursion.
 
 ---
 
