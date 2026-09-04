@@ -4,11 +4,26 @@
 **Covers:** none — no spec
 **Estimated scope:** M (multi-file)
 **Owner:** unassigned
-**Produces:** `tail.Tail`, `tail.New`, `tail.Watermark`, `tail.Entry`, `tail.ChunkSize`, `tail.WriterToken`, `tail.Tail.TakeWriter`, `tail.Tail.Append`, `tail.Tail.Watermark`, `tail.Tail.Walk`, `tail.ErrWriterNotHeld`
-**Consumes:** `tx.TxID` from ADR-002, `ports.Datom` from ADR-003
+**Produces:** `tail.Tail`, `tail.New`, `tail.Watermark`, `tail.Entry`, `tail.ChunkSize`, `tail.Tail.Append`, `tail.Tail.Watermark`, `tail.Tail.Walk`, `tail.ErrFencedOut`
+**Consumes:** `tx.TxID` from ADR-002, `ports.Datom` from ADR-003, `lease.Epoch` from ADR-009
 **Data dependency:** hermetic
 **Proof map:** v1
-**Rests-on:** `the watermark advancing only after an entry is completely written`, `chunks never moving once written`, `the writer token being required to append`
+**Rests-on:** `the watermark advancing only after an entry is completely written`, `chunks never moving once written`, `a current epoch being required to append`
+
+⚠ **Amended by ADR-009 on 2026-09-04.** As shipped, this task produced
+`tail.WriterToken`, `tail.Tail.TakeWriter` and `tail.ErrWriterNotHeld`: a token
+handed out once and never taken back. ADR-019's chaos suite catalogued the
+consequence as the corpus's only open failure — a leaf whose writer died was
+readable forever and writable never. ADR-009 replaced the token with a
+`lease.Epoch` carried on every append and refused at the tail, so the
+single-writer assumption is now enforced by a mechanism that CAN be superseded.
+
+The watermark, the chunking and the lock-free read path are unchanged, because
+none of them depended on the token being permanent — and the Acceptance fence is
+byte-identical, so this task's acceptance and mutation evidence still bind. The
+third `Rests-on:` mechanism was renamed with the thing it names, and the
+Verification Log keeps the row proved under its old name: that row is what was
+true then, and deleting it would rewrite history rather than correct it.
 
 ## Goal
 
@@ -29,12 +44,12 @@ descend the address space. It is a layout choice, not a shard count.
 
 ## Ordered Steps
 
-1. [S1] Write the failing tests first (TDD red): `TestPartialEntryIsNeverVisible`, `TestReadersAndWriterActuallyOverlap`, `TestSnapshotIsRepeatable`, `TestChunkGrowthDoesNotMoveEntries`, `TestAppendRequiresTheWriterToken`. Run the Acceptance fence and confirm it is red. ⚠Check each name is SELECTED by the fence's `-run` filter before running any mutant. [proof: acceptance]
+1. [S1] Write the failing tests first (TDD red): `TestPartialEntryIsNeverVisible`, `TestReadersAndWriterActuallyOverlap`, `TestSnapshotIsRepeatable`, `TestChunkGrowthDoesNotMoveEntries`, `TestAppendRequiresACurrentEpoch`. Run the Acceptance fence and confirm it is red. ⚠Check each name is SELECTED by the fence's `-run` filter before running any mutant. [proof: acceptance]
 2. [S2] Define `Entry` — one published transaction: its `tx.TxID` and its datoms — and `Watermark`, a published position.
 3. [S3] Implement chunked storage: `ChunkSize` entries per chunk, chunks addressed through an index that is replaced rather than mutated when it grows. ★A chunk is never moved once written, so a reader holding an older index still addresses valid memory.
 4. [S4] Implement `Append`: write the entry into its slot COMPLETELY, then advance the watermark with one atomic store. ★The order is the whole mechanism. An entry published before it is written is a torn read — data returned that never existed — and no amount of downstream checking recovers it.
 5. [S5] Implement the reader side: one acquire-load of the watermark, then reads bounded by it. No mutex, no reference count, no epoch.
-6. [S6] Require a writer token to append, refusing with `ErrWriterNotHeld` otherwise. ★ADR-003 gives a leaf ONE writer; a tail that accepts appends from anywhere would make the single-writer assumption a convention rather than a property, and this design's correctness rests on it.
+6. [S6] Require a current claim to append, refusing otherwise. ★ADR-003 gives a leaf ONE writer; a tail that accepts appends from anywhere would make the single-writer assumption a convention rather than a property, and this design's correctness rests on it. ⚠As shipped this was a writer token; ADR-009 replaced it with a `lease.Epoch` refused at the tail, for the reason in the header note above.
 7. [S7] Write the package comment stating why publication replaces guarding, and what a reader is guaranteed. [proof: human: a reader confirms the comment explains why an unfinished entry is UNREACHABLE rather than protected, which is the distinction the whole design turns on]
 
 ## Acceptance
@@ -59,7 +74,7 @@ produced it.
 | `TestReadersAndWriterActuallyOverlap` | `internal/core/tail/tail_test.go` | The concurrency test actually overlapped: a reader observed the watermark ADVANCE during its run. A run that never saw growth fails rather than passing quietly | — | S4, S5 |
 | `TestSnapshotIsRepeatable` | `internal/core/tail/tail_test.go` | A watermark loaded once yields the same entries however many times it is read, and appends made afterwards are not in it | — | S2, S5 |
 | `TestChunkGrowthDoesNotMoveEntries` | `internal/core/tail/tail_test.go` | Entries written before a chunk-index growth are still readable, at the same positions, through an index captured before it | — | S3 |
-| `TestAppendRequiresTheWriterToken` | `internal/core/tail/tail_test.go` | An append without the writer token is refused with `ErrWriterNotHeld`, so the single-writer assumption is a property rather than a convention | — | S6 |
+| `TestAppendRequiresACurrentEpoch` | `internal/core/tail/tail_test.go` | An append under no claim, or under an epoch the tail has already seen past, is refused with `ErrFencedOut`, so the single-writer assumption is a property rather than a convention. ⚠Named `TestAppendRequiresTheWriterToken` until ADR-009; the fence's `-run` filter matches `TestAppendRequires` and is unchanged, so this task's acceptance and mutation evidence still bind | — | S6 |
 
 ⚠ `TestReadersAndWriterActuallyOverlap` exists because a clean race-detector run
 proves nothing if the reader and the writer never ran at the same time. A
@@ -81,6 +96,7 @@ makes the other tests' silence meaningful.
 - 2026-09-04 · ed35910* · mutant killed · exit 1 · `internal/core/tail/tail.go` · publishes an entry whose payload was not written, which is exactly what a reader observes if the watermark advances before the write completes: the identifier is present and the datoms are not · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · covers:the watermark advancing only after an entry is completely written
 - 2026-09-04 · ed35910* · mutant killed · exit 1 · `internal/core/tail/tail.go` · drops the most recent chunk when the index grows so a fresh empty one replaces it, which is what happens whenever growth does not carry existing chunks forward by pointer: entries written before a growth become unreadable · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · covers:chunks never moving once written
 - 2026-09-04 · ed35910* · mutant killed · exit 1 · `internal/core/tail/tail.go` · accepts an append from any caller including the zero token, so the single-writer assumption becomes a convention and two appenders would compute the same slot · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · covers:the writer token being required to append
+- 2026-09-04 · 5cb6794* · mutant killed · exit 1 · `internal/core/tail/tail.go` · accepts an append carrying no lease at all, which makes the single-writer assumption a convention again — the exact regression ADR-009 replaced the writer token to avoid · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · covers:a current epoch being required to append
 
 ## Invariants
 
@@ -114,3 +130,5 @@ an exception to grant.
 - 2026-09-04 · ed35910* · exit 0 · `set -o pipefail …` · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · ms:2005
 - 2026-09-04 · ed35910* · exit 0 · `set -o pipefail …` · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · ms:2044
 - 2026-09-04 · ed35910* · exit 0 · `set -o pipefail …` · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · ms:2051
+- 2026-09-04 · 5cb6794* · exit 0 · `set -o pipefail …` · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · ms:2098
+- 2026-09-04 · 5cb6794* · exit 0 · `set -o pipefail …` · acceptance-sha256:5e2353cd9cf6a5d4ea52404a44d9c96e9ff1a3cd12043137983c5644a968e3bf · ms:2128

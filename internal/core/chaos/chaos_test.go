@@ -221,12 +221,12 @@ func TestWriterStoppedMidAppendLosesNothingPublished(t *testing.T) {
 		assertDisposition(t, "writer-stopped-mid-append", step, Recovers)
 	}
 
-	// ⚠ This one is EXPECTED to be unrecoverable. Asserting the expectation is
-	// what stops the finding being quietly fixed-by-accident and forgotten, and
-	// what makes the test fail loudly when ADR-009 finally closes it — at which
-	// point the catalogue entry has to be re-dispositioned rather than left
-	// claiming something that stopped being true.
-	assertDisposition(t, "writer-process-lost", 0, UnrecoverableAndOpen)
+	// ⚠ This asserted UnrecoverableAndOpen until ADR-009, and the assertion did
+	// its job: when fencing landed, this line went RED and forced the catalogue
+	// entry to be re-dispositioned rather than left claiming something that had
+	// stopped being true. That is the whole reason to assert a known-broken thing
+	// is still broken.
+	assertDisposition(t, "writer-process-lost", 0, Recovers)
 }
 
 // TestCatalogueDistinguishesOpenFromByDesign checks the open entries stay
@@ -257,12 +257,30 @@ func TestCatalogueDistinguishesOpenFromByDesign(t *testing.T) {
 		counts[e.disposition]++
 	}
 
-	// Each of the three must actually occur, or the distinction is untested: a
-	// catalogue where everything recovers proves nothing about the vocabulary.
-	for _, d := range Dispositions() {
+	// ⚠ The distinction that must be exercised is RECOVERS versus UNRECOVERABLE
+	// BY DESIGN. Both are permanent facts about the system, and a catalogue that
+	// never used the second would prove nothing about the vocabulary.
+	//
+	// UNRECOVERABLE AND OPEN is deliberately NOT required to occur. This test
+	// used to demand all three, which was reasonable while one entry was open and
+	// is wrong as a standing rule: it would make a system with no known-broken
+	// behaviour fail its own catalogue check, and the only way to go green again
+	// would be to have a bug. Corrected when ADR-009 closed the last open entry.
+	for _, d := range []Disposition{Recovers, UnrecoverableByDesign} {
 		if counts[d.String()] == 0 {
-			t.Errorf("no catalogue entry is %q; the distinction between intended and open "+
-				"losses is not exercised by anything", d)
+			t.Errorf("no catalogue entry is %q; the distinction between a loss that is intended "+
+				"and one that is not is exercised by nothing", d)
+		}
+	}
+
+	// The open count is what an operator reads, so it must be derivable from the
+	// document rather than asserted in prose.
+	open := counts[UnrecoverableAndOpen.String()]
+	t.Logf("catalogue: %d recovers, %d unrecoverable by design, %d open",
+		counts[Recovers.String()], counts[UnrecoverableByDesign.String()], open)
+	for _, f := range Registered() {
+		if f.Expected == UnrecoverableAndOpen && counts[UnrecoverableAndOpen.String()] == 0 {
+			t.Errorf("fault %q expects to be open and the catalogue lists no open entry", f.Name)
 		}
 	}
 

@@ -22,7 +22,9 @@ looking into it" enters a catalogue, after which nothing in it is countable.
 - **unrecoverable and open** — the system does not recover and it should. Every
   such entry carries a fix, or a written reason there is none.
 
-Open entries, currently: **1**.
+Open entries, currently: **0**. One entry has been closed — see *Closed
+findings* below, which is kept rather than deleted so the corpus records that
+the failure existed and what fixed it.
 
 ⚠ Everything below was observed in a SINGLE PROCESS. The classes that need real
 machines — network partition, host clock skew, disk exhaustion, crash and
@@ -39,37 +41,48 @@ restart — are not covered here, and are ADR-019's T2. An entry reading
 | `block-checksum-mismatch` | ADR-005 | recovers | A bit is flipped in a stored block. The checksum is verified before the codec runs, so `DecodeBlock` returns `ErrCorruptBlock` instead of handing rotten bytes to a decompressor. | Re-read from another replica or rebuild from the stripe. The error is raised *before* decompression deliberately: a decompressor fed rotten bytes fails confusingly at best and produces plausible garbage at worst. |
 | `durability-floor-breached` | ADR-004 | recovers | A cluster degrades below the policy's `MinSize`. Writes are refused rather than accepted at a durability nobody has. Four copies inside ONE failure domain are also refused, because the floor counts distinct domains rather than copies. | Restore failure domains until the floor is met; writes resume by themselves. The refusal is the system working — a cluster that kept accepting writes here would be losing data quietly instead of loudly. |
 | `writer-stopped-mid-append` | ADR-017 | recovers | The writer stops without releasing, flushing or cleaning up — what a killed process looks like from the tail's side. Every published entry is readable and whole; anything it had not published was never reachable. | Nothing is lost that was acknowledged. See the open entry below for what happens NEXT, which is the part that does not recover. |
-| `writer-process-lost` | ADR-017 | **unrecoverable and open** | The leaf becomes permanently read-only. Reads keep serving the published prefix correctly, but `TakeWriter` refuses forever and no append can ever succeed again. | **No operator action recovers this today; the leaf must be considered lost for writes.** See below for why it is not simply fixed. |
+| `writer-process-lost` | ADR-009 | recovers | The writer's process dies without releasing anything. A replacement is granted a strictly higher epoch without waiting for the one that vanished, and writes resume. Had the lost writer merely been PAUSED, its next append is refused at the tail with `ErrFencedOut` rather than corrupting anything. | Nothing, once a replacement holds the leaf. ⚠Was **unrecoverable and open** until ADR-009 — see *Closed findings*. |
 
-## The open entry, in full
+## Closed findings
 
-### `writer-process-lost` — a leaf whose writer dies is read-only forever
+An entry is never deleted when it stops being true. Deleting it would leave no
+record that the failure existed, which is most of what a catalogue is for.
 
-**What was observed.** A tail hands out its writer token exactly once, because
-two writers would compute the same slot for different entries. If the holder
-disappears, nothing releases the token: `TakeWriter` returns false for the rest
-of the process's life, and an append with any other token is refused with
-`ErrWriterNotHeld`. Reads are unaffected and stay correct — the failure is
-one-sided.
+### `writer-process-lost` — was: a leaf whose writer dies is read-only forever
 
-**Why it is not fixed here.** The obvious fix, a `ReleaseWriter` or a token that
-any caller may claim after a timeout, is worse than the fault. It would let a
-second writer take the leaf while the first is merely SLOW rather than dead —
-paused by a garbage collection, a stalled disk, a network hiccup — and two live
-writers appending to one tail is not a degraded system, it is a corrupted one.
-The tail's whole correctness rests on there being exactly one.
+**Closed by ADR-009 on 2026-09-04.**
 
-Safe handover needs a fencing epoch: a monotonically increasing term, written
-into the log, that makes a resurrected old writer's appends refusable. That
-mechanism is `ADR-009`'s, and inventing a second one here would leave two
-authorities over which node owns a leaf.
+**What was observed.** ADR-017's tail handed out its writer token exactly once,
+because two writers would compute the same slot for different entries. If the
+holder disappeared, nothing released the token: `TakeWriter` returned false for
+the rest of the process's life, and an append with any other token was refused.
+Reads were unaffected and stayed correct — the failure was one-sided and silent,
+so a leaf looked healthy while accepting no writes ever again.
 
-**So it is written down rather than patched.** The correct fix is a record that
-does not exist yet, and a wrong fix would trade a leaf that stops for a leaf that
-lies.
+**Why it was not fixed immediately.** The obvious fix — a release call, or a
+token any caller may claim after a timeout — is worse than the fault. It cannot
+distinguish a DEAD holder from a SLOW one, so a garbage-collection pause, a
+stalled disk or a network hiccup eventually lets a second writer take a leaf
+whose first writer is still alive. Two live writers appending to one tail is not
+a degraded system, it is a corrupted one. Trading a leaf that stops for a leaf
+that lies is a bad trade, and the right response was to catalogue it and wait for
+the mechanism that makes handover safe.
 
-**When it closes.** ADR-009 lands, `TakeWriter` gains an epoch, and this entry is
-re-run and re-dispositioned. ADR-019's Follow-ups carry the obligation.
+**What fixed it.** ADR-009 replaced the token with a lease carrying a
+monotonically increasing epoch, and — the part that matters — put the check at
+the RESOURCE. An append carries its epoch and the tail refuses anything below the
+highest it has seen. A writer that asks "am I still the writer?" and then writes
+has a window between the two in which it can lose the leaf, and no amount of
+checking from the writer's side closes it. So a superseded writer is refused at
+its next append, having been told nothing and having done no harm.
+
+A grant never waits for the previous holder, which is what stops a dead writer
+being a permanent outage; the epoch is what makes not waiting safe.
+
+**What is still open behind it.** Consensus — who DECIDES a handover should
+happen — needs a transport and is `BACKLOG.md` §19. The fencing is real; the
+election is not, and the registry that grants epochs is in-process and named for
+what it is.
 
 ## Known, but not yet injectable
 

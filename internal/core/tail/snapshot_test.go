@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/lease"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
 )
 
@@ -12,11 +13,11 @@ import (
 // that are about the watermark rather than about the bound.
 var latest = tx.TxID{HLC: hlc.Timestamp{Wall: math.MaxInt64, Logical: math.MaxUint32}, Seq: math.MaxUint32}
 
-func fill(t *testing.T, tl *Tail, w WriterToken, from, to uint32) {
+func fill(t *testing.T, tl *Tail, e lease.Epoch, from, to uint32) {
 	t.Helper()
 	for seq := from; seq <= to; seq++ {
 		id, datoms := entryFor(seq)
-		if _, err := tl.Append(w, id, datoms); err != nil {
+		if _, err := tl.Append(e, id, datoms); err != nil {
 			t.Fatalf("Append %d: %v", seq, err)
 		}
 	}
@@ -39,8 +40,8 @@ func read(tl *Tail, s Snapshot) []uint32 {
 // exist, which is why a snapshot is the pair and not either one alone.
 func TestSnapshotExcludesLaterTransactions(t *testing.T) {
 	tl := New()
-	w := mustTakeWriter(t, tl)
-	fill(t, tl, w, 1, 10)
+	e := writerEpoch(t)
+	fill(t, tl, e, 1, 10)
 
 	if got := tl.Watermark(); got != 10 {
 		t.Fatalf("watermark = %d, want 10 — every entry must be published for this test to be about the bound", got)
@@ -85,8 +86,8 @@ func TestSnapshotExcludesLaterTransactions(t *testing.T) {
 // read runs, and however high the bound is.
 func TestReadIsBoundedByTheSnapshot(t *testing.T) {
 	tl := New()
-	w := mustTakeWriter(t, tl)
-	fill(t, tl, w, 1, 6)
+	e := writerEpoch(t)
+	fill(t, tl, e, 1, 6)
 
 	// The bound admits everything, so only the watermark can exclude anything.
 	s := tl.Snapshot(latest)
@@ -95,7 +96,7 @@ func TestReadIsBoundedByTheSnapshot(t *testing.T) {
 		t.Fatalf("snapshot read %d entries, want 6", len(before))
 	}
 
-	fill(t, tl, w, 7, 40)
+	fill(t, tl, e, 7, 40)
 
 	after := read(tl, s)
 	if len(after) != 6 {

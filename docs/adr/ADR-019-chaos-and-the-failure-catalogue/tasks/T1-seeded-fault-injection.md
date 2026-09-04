@@ -115,3 +115,4 @@ untrue.
 - 2026-09-04 · 28a69a4* · exit 0 · `set -o pipefail …` · acceptance-sha256:955ca8dff4ba153acc4d84eb524b18c81664240e8eca503454a1cdecfcb861b9 · ms:4144
 - 2026-09-04 · 28a69a4* · exit 0 · `set -o pipefail …` · acceptance-sha256:955ca8dff4ba153acc4d84eb524b18c81664240e8eca503454a1cdecfcb861b9 · ms:4247
 - 2026-09-04 · 28a69a4* · exit 0 · `set -o pipefail …` · acceptance-sha256:955ca8dff4ba153acc4d84eb524b18c81664240e8eca503454a1cdecfcb861b9 · ms:4178
+- 2026-09-04 · 5cb6794* · exit 0 · `set -o pipefail …` · acceptance-sha256:955ca8dff4ba153acc4d84eb524b18c81664240e8eca503454a1cdecfcb861b9 · ms:4268

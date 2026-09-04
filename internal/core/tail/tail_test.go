@@ -6,7 +6,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/lease"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
 )
@@ -45,13 +47,18 @@ func checkEntry(e Entry) string {
 // HLCSeq is a test helper reading the logical counter this fixture writes.
 func (e Entry) HLCSeq() uint32 { return e.TxID.HLC.Logical }
 
-func mustTakeWriter(t *testing.T, tl *Tail) WriterToken {
+// writerEpoch grants a lease and returns its epoch, which is what a writer
+// carries since ADR-009 replaced ADR-017's original writer token.
+func writerEpoch(t *testing.T) lease.Epoch {
 	t.Helper()
-	w, ok := tl.TakeWriter()
-	if !ok {
-		t.Fatal("the writer token was already taken")
+	var leaf addr.LeafID
+	leaf.Prefix[0] = 0x01
+	leaf.Depth = 1
+	l, err := lease.NewRegistry().Grant(leaf, "writer")
+	if err != nil {
+		t.Fatalf("Grant: %v", err)
 	}
-	return w
+	return l.Epoch
 }
 
 // TestPartialEntryIsNeverVisible runs a writer and readers together and checks
@@ -64,7 +71,7 @@ func mustTakeWriter(t *testing.T, tl *Tail) WriterToken {
 func TestPartialEntryIsNeverVisible(t *testing.T) {
 	const total = 5000
 	tl := New()
-	w := mustTakeWriter(t, tl)
+	e := writerEpoch(t)
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
@@ -104,7 +111,7 @@ func TestPartialEntryIsNeverVisible(t *testing.T) {
 
 	for seq := uint32(1); seq <= total; seq++ {
 		id, datoms := entryFor(seq)
-		if _, err := tl.Append(w, id, datoms); err != nil {
+		if _, err := tl.Append(e, id, datoms); err != nil {
 			t.Fatalf("Append %d: %v", seq, err)
 		}
 	}
@@ -126,7 +133,7 @@ func TestPartialEntryIsNeverVisible(t *testing.T) {
 func TestReadersAndWriterActuallyOverlap(t *testing.T) {
 	const total = 20000
 	tl := New()
-	w := mustTakeWriter(t, tl)
+	e := writerEpoch(t)
 
 	var wg sync.WaitGroup
 	observed := make(chan int, 1)
@@ -149,7 +156,7 @@ func TestReadersAndWriterActuallyOverlap(t *testing.T) {
 	<-started
 	for seq := uint32(1); seq <= total; seq++ {
 		id, datoms := entryFor(seq)
-		if _, err := tl.Append(w, id, datoms); err != nil {
+		if _, err := tl.Append(e, id, datoms); err != nil {
 			t.Fatalf("Append %d: %v", seq, err)
 		}
 	}
@@ -166,11 +173,11 @@ func TestReadersAndWriterActuallyOverlap(t *testing.T) {
 // reading it twice gives the same answer, and later appends are not in it.
 func TestSnapshotIsRepeatable(t *testing.T) {
 	tl := New()
-	w := mustTakeWriter(t, tl)
+	e := writerEpoch(t)
 
 	for seq := uint32(1); seq <= 10; seq++ {
 		id, datoms := entryFor(seq)
-		if _, err := tl.Append(w, id, datoms); err != nil {
+		if _, err := tl.Append(e, id, datoms); err != nil {
 			t.Fatalf("Append %d: %v", seq, err)
 		}
 	}
@@ -185,7 +192,7 @@ func TestSnapshotIsRepeatable(t *testing.T) {
 	// many times it is read.
 	for seq := uint32(11); seq <= 30; seq++ {
 		id, datoms := entryFor(seq)
-		if _, err := tl.Append(w, id, datoms); err != nil {
+		if _, err := tl.Append(e, id, datoms); err != nil {
 			t.Fatalf("Append %d: %v", seq, err)
 		}
 	}
@@ -226,13 +233,13 @@ func collect(tl *Tail, w Watermark) []uint32 {
 // memory that no longer means what it did.
 func TestChunkGrowthDoesNotMoveEntries(t *testing.T) {
 	tl := New()
-	w := mustTakeWriter(t, tl)
+	e := writerEpoch(t)
 
 	// Fill past several chunk boundaries.
 	const total = ChunkSize*3 + 7
 	for seq := uint32(1); seq <= total; seq++ {
 		id, datoms := entryFor(seq)
-		if _, err := tl.Append(w, id, datoms); err != nil {
+		if _, err := tl.Append(e, id, datoms); err != nil {
 			t.Fatalf("Append %d: %v", seq, err)
 		}
 	}
@@ -252,7 +259,7 @@ func TestChunkGrowthDoesNotMoveEntries(t *testing.T) {
 	early := Watermark(5)
 	for seq := uint32(total + 1); seq <= total+ChunkSize*2; seq++ {
 		id, datoms := entryFor(seq)
-		if _, err := tl.Append(w, id, datoms); err != nil {
+		if _, err := tl.Append(e, id, datoms); err != nil {
 			t.Fatalf("Append %d: %v", seq, err)
 		}
 	}
@@ -267,40 +274,48 @@ func TestChunkGrowthDoesNotMoveEntries(t *testing.T) {
 	}
 }
 
-// TestAppendRequiresTheWriterToken checks the single-writer assumption is a
+// TestAppendRequiresACurrentEpoch checks the single-writer assumption is a
 // property rather than a convention.
-func TestAppendRequiresTheWriterToken(t *testing.T) {
+//
+// ⚠ This was `TestAppendRequiresTheWriterToken` until ADR-009. ADR-017 handed
+// out one writer token and never took it back, which ADR-019's chaos suite
+// catalogued as the corpus's only open failure: a leaf whose writer died was
+// readable forever and writable never. The token is now an epoch, so the same
+// assumption is enforced by a mechanism that CAN be superseded.
+func TestAppendRequiresACurrentEpoch(t *testing.T) {
 	tl := New()
 	id, datoms := entryFor(1)
 
-	// The zero token holds nothing.
-	if _, err := tl.Append(WriterToken{}, id, datoms); err == nil {
-		t.Error("an append with the zero token succeeded; the single-writer assumption is only a convention")
-	} else if !isWriterNotHeld(err) {
-		t.Errorf("zero token: error = %v, want ErrWriterNotHeld", err)
+	// The zero epoch names no lease.
+	if _, err := tl.Append(lease.NoEpoch, id, datoms); !errors.Is(err, ErrFencedOut) {
+		t.Errorf("the zero epoch: error = %v, want ErrFencedOut — appending under no lease at "+
+			"all would make the single-writer assumption a convention", err)
 	}
 
-	w := mustTakeWriter(t, tl)
-	if _, err := tl.Append(w, id, datoms); err != nil {
-		t.Fatalf("the holder of the token was refused: %v", err)
+	// The FIRST epoch seen is accepted whatever its value, so a tail never has
+	// to be told where the counter started.
+	if _, err := tl.Append(lease.Epoch(7), id, datoms); err != nil {
+		t.Fatalf("the first epoch a tail saw was refused: %v", err)
+	}
+	if got := tl.Epoch(); got != 7 {
+		t.Errorf("the tail records epoch %d, want 7", got)
 	}
 
-	// The token is handed out once.
-	if _, ok := tl.TakeWriter(); ok {
-		t.Error("a second writer token was handed out; two writers would compute the same slot")
+	// One holder appends many times under one epoch, so equal is accepted.
+	for seq := uint32(2); seq <= 4; seq++ {
+		nextID, nextDatoms := entryFor(seq)
+		if _, err := tl.Append(lease.Epoch(7), nextID, nextDatoms); err != nil {
+			t.Fatalf("append %d under the held epoch: %v", seq, err)
+		}
 	}
 
-	// A token for another tail does not work here.
-	other := New()
-	ow := mustTakeWriter(t, other)
-	if _, err := tl.Append(ow, id, datoms); !isWriterNotHeld(err) {
-		t.Errorf("another tail's token: error = %v, want ErrWriterNotHeld", err)
+	// An older epoch is refused, which is the whole point.
+	oldID, oldDatoms := entryFor(99)
+	if _, err := tl.Append(lease.Epoch(6), oldID, oldDatoms); !errors.Is(err, ErrFencedOut) {
+		t.Errorf("an older epoch: error = %v, want ErrFencedOut", err)
 	}
-	if got := tl.Watermark(); got != 1 {
-		t.Errorf("watermark = %d after one accepted and three refused appends, want 1", got)
-	}
-}
 
-func isWriterNotHeld(err error) bool {
-	return errors.Is(err, ErrWriterNotHeld)
+	if got := tl.Watermark(); got != 4 {
+		t.Errorf("watermark = %d after four accepted and two refused appends, want 4", got)
+	}
 }

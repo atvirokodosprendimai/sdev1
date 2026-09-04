@@ -419,6 +419,37 @@ redirect for it, so it holds routing state about leaves it no longer serves. Tha
 state has to age out or it grows forever, and nothing says when. Forgetting too
 early turns a redirect back into an error for whichever client was slowest.
 
+### §19 — Consensus is decided but unbuilt: nothing elects, replicates or remembers a grant
+
+**Source:** ADR-009 (`docs/adr/ADR-009-fenced-leases.md`), Out of Scope; and both
+its task files.
+
+ADR-009 lands the fencing half — an epoch that orders claims and a resource that
+refuses stale ones — and that half is what closes the catalogue's open failure.
+The other half is decided in prose and built nowhere.
+
+**Raft itself.** Log replication, elections, membership changes. It needs the
+transport §18 owns, and picking a library before there is a transport to run it
+over would be choosing on no information.
+
+**Heartbeat coalescing.** One consensus group per leaf subtree means many mostly-
+idle groups over the same few nodes, and the design only works if their
+heartbeats share a message. What that message looks like is a wire question and
+waits with §18.
+
+**Where a registry lives, and whether it remembers.** Today's is in-process, so
+every epoch is forgotten on restart. ⚠ A granter that restarts and REISSUES an
+epoch it already granted voids fencing completely, because the token stops
+ordering anything. ADR-009's tail refuses any epoch not strictly above what it
+has SEEN, so a confused granter is caught at the resource — but a granter that
+forgets everything cannot grant safely at all, and that is the gap.
+
+⚠ One thing must survive into whatever closes this: **nothing on the write path
+may consult liveness.** No heartbeat, no timeout, no health check gating an
+append. The whole value of an epoch is that the resource refuses correctly while
+knowing nothing about who is alive, and a consensus layer is exactly where
+somebody will be tempted to add a liveness check "for safety".
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.

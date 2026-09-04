@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/atvirokodosprendimai/sdev1/internal/core/lease"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
 )
@@ -17,12 +18,20 @@ import (
 // space uses to descend a level. It is a layout choice and not a shard count.
 const ChunkSize = 256
 
-// ErrWriterNotHeld reports an append attempted without the writer token.
+// ErrFencedOut reports an append carrying an epoch older than one this tail has
+// already seen.
 //
-// A leaf has one writer. Refusing an append from anywhere else makes that a
-// property rather than a convention, and this package's correctness rests on it:
-// two concurrent appenders would both compute the same slot.
-var ErrWriterNotHeld = errors.New("tail: append attempted without the writer token")
+// ★ The refusal happens HERE, at the resource, and that placement is the whole
+// mechanism. A writer that asks "am I still the writer?", gets yes, and then
+// appends has a window between the question and the write in which it can lose
+// the leaf — to a garbage collection, a stalled disk, a partition — and the write
+// lands anyway. The check and the write are not atomic and no amount of checking
+// from the writer's side makes them so.
+//
+// So a writer that was paused across a handover comes back, appends under its
+// old epoch, and is refused by the tail itself. It cannot corrupt anything; it
+// can only fail, which is what it should do.
+var ErrFencedOut = errors.New("tail: the epoch is older than one this tail has already seen")
 
 // Entry is one published transaction: its identifier and the datoms it asserted.
 //
@@ -36,12 +45,6 @@ type Entry struct {
 // Watermark is a published position: the number of entries that are complete and
 // visible. It is the bound a reader walks against.
 type Watermark uint64
-
-// WriterToken is the right to append. Its zero value holds nothing, so an
-// append with a token nobody took is refused rather than accepted by default.
-type WriterToken struct {
-	tail *Tail
-}
 
 // chunk is a fixed block of entry slots. Once allocated it is never moved, so a
 // reader holding it through an older index still addresses valid memory.
@@ -61,8 +64,16 @@ type Tail struct {
 	// writeMu serializes WRITERS with each other. No reader ever acquires it —
 	// that is the property the guard in this package checks.
 	writeMu sync.Mutex
-	// taken records whether the writer token has been handed out.
-	taken bool
+
+	// highest is the greatest epoch this tail has observed. It is atomic rather
+	// than guarded so that reading it costs nothing and cannot be mistaken for
+	// something a reader must synchronize on.
+	//
+	// ⚠ Observing a higher epoch is IRREVERSIBLE: once seen, a lower one is
+	// never accepted again, even if the holder of the higher epoch vanishes
+	// immediately. A leaf that has moved on cannot be dragged back by whichever
+	// writer was slowest.
+	highest atomic.Uint64
 
 	// index and high are the two published values. The order in which they are
 	// written, and read, is the mechanism; see Append and Watermark.
@@ -73,21 +84,20 @@ type Tail struct {
 // New returns an empty tail.
 func New() *Tail { return &Tail{} }
 
-// TakeWriter hands out the writer token, once.
+// Epoch reports the greatest epoch this tail has observed.
 //
-// A second caller gets false rather than a second token, because two writers
-// would compute the same slot for different entries.
-func (t *Tail) TakeWriter() (WriterToken, bool) {
-	t.writeMu.Lock()
-	defer t.writeMu.Unlock()
-	if t.taken {
-		return WriterToken{}, false
-	}
-	t.taken = true
-	return WriterToken{tail: t}, true
-}
+// It is a diagnostic. Nothing should decide whether it may write by asking this
+// and then writing — that is the non-atomic pattern [ErrFencedOut] exists to
+// make unnecessary. Pass the epoch to [Tail.Append] and let the tail refuse.
+func (t *Tail) Epoch() lease.Epoch { return lease.Epoch(t.highest.Load()) }
 
-// Append writes an entry and publishes it.
+// Append writes an entry and publishes it, under the caller's epoch.
+//
+// ⚠ The epoch is checked HERE and refused here. A leaf has one writer, and this
+// is what makes that a property rather than a convention: a writer superseded
+// while it was paused is refused at its next append with [ErrFencedOut], having
+// been told nothing and having done no harm. There is no release and no expiry,
+// because neither can tell a dead holder from a slow one.
 //
 // ★ The two steps are ordered and the order IS the mechanism: the entry is
 // written COMPLETELY, and only then does the watermark advance. Reversed, a
@@ -98,13 +108,21 @@ func (t *Tail) TakeWriter() (WriterToken, bool) {
 // otherwise be mutating published state, which is the one thing this design does
 // not allow. The bytes inside a datom's value are NOT copied and belong to the
 // tail once appended.
-func (t *Tail) Append(w WriterToken, id tx.TxID, datoms []ports.Datom) (Watermark, error) {
-	if w.tail != t {
-		return 0, fmt.Errorf("%w: the token names %v, this tail is %p", ErrWriterNotHeld, w.tail, t)
+func (t *Tail) Append(e lease.Epoch, id tx.TxID, datoms []ports.Datom) (Watermark, error) {
+	if e == lease.NoEpoch {
+		return 0, fmt.Errorf("%w: the zero epoch names no lease", ErrFencedOut)
 	}
 
 	t.writeMu.Lock()
 	defer t.writeMu.Unlock()
+
+	// Equal is accepted — the current holder appends many times under one
+	// epoch — and the FIRST epoch seen is accepted whatever its value, so a tail
+	// never needs to be told where the counter started.
+	if seen := lease.Epoch(t.highest.Load()); e < seen {
+		return 0, fmt.Errorf("%w: epoch %d, and this tail has seen %d", ErrFencedOut, e, seen)
+	}
+	t.highest.Store(uint64(e))
 
 	// Only the writer advances high, and it holds writeMu, so this load is exact
 	// rather than merely recent.

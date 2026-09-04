@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math/rand"
 
+	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/durability"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/erasure"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/lease"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/segment"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/tail"
@@ -254,15 +256,15 @@ func init() {
 		Expected: Recovers,
 		Inject: func(rng *rand.Rand) (Outcome, error) {
 			tl := tail.New()
-			w, ok := tl.TakeWriter()
-			if !ok {
-				return Outcome{}, fmt.Errorf("%w: could not take the writer on a fresh tail", ErrPreconditionNotMet)
+			epoch, err := grantLeaf(0x0F, "node-a")
+			if err != nil {
+				return Outcome{}, err
 			}
 			published := 3 + rng.Intn(40)
 			for seq := 1; seq <= published; seq++ {
 				id := tx.TxID{HLC: hlc.Timestamp{Wall: int64(seq) * 1000, Logical: uint32(seq)}, Seq: uint32(seq)}
 				d := []ports.Datom{{Entity: fmt.Sprintf("e%d", seq), Attribute: "a", Assert: true}}
-				if _, err := tl.Append(w, id, d); err != nil {
+				if _, err := tl.Append(epoch, id, d); err != nil {
 					return Outcome{}, fmt.Errorf("appending %d: %w", seq, err)
 				}
 			}
@@ -300,48 +302,80 @@ func init() {
 		},
 	})
 
+	// ⚠ This fault was UNRECOVERABLE AND OPEN until ADR-009. It is the entry that
+	// found the defect, so it is also the evidence the defect is fixed — kept and
+	// re-dispositioned rather than replaced by a fresh test written to agree with
+	// the fix, which would prove less.
 	must(Fault{
 		Name:     "writer-process-lost",
-		Record:   "ADR-017",
-		Expected: UnrecoverableAndOpen,
+		Record:   "ADR-009",
+		Expected: Recovers,
 		Inject: func(rng *rand.Rand) (Outcome, error) {
 			tl := tail.New()
-			w, ok := tl.TakeWriter()
-			if !ok {
-				return Outcome{}, fmt.Errorf("%w: could not take the writer on a fresh tail", ErrPreconditionNotMet)
+			reg := lease.NewRegistry()
+			leaf := leafAt(0x0F)
+
+			first, err := reg.Grant(leaf, "node-a")
+			if err != nil {
+				return Outcome{}, fmt.Errorf("granting the first lease: %w", err)
 			}
 			id := tx.TxID{HLC: hlc.Timestamp{Wall: 1000, Logical: 1}, Seq: 1}
-			if _, err := tl.Append(w, id, []ports.Datom{{Entity: "e1", Attribute: "a", Assert: true}}); err != nil {
+			if _, err := tl.Append(first.Epoch, id, []ports.Datom{{Entity: "e1", Attribute: "a", Assert: true}}); err != nil {
 				return Outcome{}, fmt.Errorf("the first append failed: %w", err)
 			}
 
-			// The writer's process is lost. The token goes with it.
-			w = tail.WriterToken{}
-
-			// Reads still work — that is the half that recovers.
+			// node-a's process is lost. Nothing releases, nothing is told.
 			readable := 0
 			tl.Walk(tl.Watermark(), func(tail.Entry) bool { readable++; return true })
 			if readable != 1 {
 				return Outcome{}, fmt.Errorf("%w: %d entries readable, expected 1", ErrPreconditionNotMet, readable)
 			}
 
-			// Writes do not. Nothing can take the token, and the lost one is
-			// refused.
-			if _, again := tl.TakeWriter(); again {
-				return Outcome{Disposition: Recovers,
-					Detail: "a replacement writer took the token after the first was lost"}, nil
+			// A replacement takes the leaf without waiting for or notifying the
+			// holder that vanished.
+			second, err := reg.Grant(leaf, "node-b")
+			if err != nil {
+				return Outcome{}, fmt.Errorf("granting the replacement lease: %w", err)
 			}
 			nextID := tx.TxID{HLC: hlc.Timestamp{Wall: 2000, Logical: 2}, Seq: 2}
-			_, err := tl.Append(w, nextID, []ports.Datom{{Entity: "e2", Attribute: "a", Assert: true}})
-			if !errors.Is(err, tail.ErrWriterNotHeld) {
-				return Outcome{Disposition: Recovers,
-					Detail: fmt.Sprintf("an append after the writer was lost returned %v", err)}, nil
+			if _, err := tl.Append(second.Epoch, nextID, []ports.Datom{{Entity: "e2", Attribute: "a", Assert: true}}); err != nil {
+				return Outcome{Disposition: UnrecoverableAndOpen,
+					Detail: fmt.Sprintf("the replacement writer was refused: %v — the leaf is still "+
+						"permanently read-only", err)}, nil
 			}
-			return Outcome{Disposition: UnrecoverableAndOpen,
-				Detail: "the leaf is permanently read-only: reads still serve the published prefix, but " +
-					"TakeWriter refuses forever and no append can succeed. There is no handover, and adding " +
-					"a bare release would be worse — two writers computing the same slot. Fencing is what " +
-					"makes handover safe, and ADR-009 owns it."}, nil
+
+			// And if node-a were merely paused rather than dead, it is fenced out
+			// rather than allowed to corrupt anything.
+			zombie := tx.TxID{HLC: hlc.Timestamp{Wall: 3000, Logical: 3}, Seq: 3}
+			_, zErr := tl.Append(first.Epoch, zombie, []ports.Datom{{Entity: "e3", Attribute: "a", Assert: true}})
+			if !errors.Is(zErr, tail.ErrFencedOut) {
+				return Outcome{Disposition: UnrecoverableAndOpen,
+					Detail: fmt.Sprintf("a superseded writer appended anyway (%v); handover is "+
+						"available but not safe, which is worse than the original fault", zErr)}, nil
+			}
+
+			return Outcome{Disposition: Recovers,
+				Detail: fmt.Sprintf("the writer was lost at epoch %d; a replacement took epoch %d "+
+					"without waiting for it, and writes resumed. The lost writer, had it merely been "+
+					"paused, is refused with ErrFencedOut at the tail rather than corrupting it. "+
+					"Closed by ADR-009; this entry was unrecoverable and open until then.",
+					first.Epoch, second.Epoch)}, nil
 		},
 	})
+}
+
+// grantLeaf issues an epoch for a leaf, the way a handover would.
+func grantLeaf(prefix byte, holder string) (lease.Epoch, error) {
+	l, err := lease.NewRegistry().Grant(leafAt(prefix), holder)
+	if err != nil {
+		return lease.NoEpoch, fmt.Errorf("granting a lease: %w", err)
+	}
+	return l.Epoch, nil
+}
+
+func leafAt(prefix byte) addr.LeafID {
+	var l addr.LeafID
+	l.Prefix[0] = prefix
+	l.Depth = 1
+	return l
 }
