@@ -76,6 +76,7 @@ exits non-zero if the wiring is wrong even when every unit test passes.
 
 - 2026-09-04 · 489b1cf* · mutant killed · exit 1 · `cmd/sdev1-addr/main.go` · the command must actually call placement and print what it returns; dropping the assignment leaves the targets section empty while everything still compiles, and TestCommandResolvesToTargets must go red · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · covers:the printed leaf identifier
 - 2026-09-04 · 489b1cf* · mutant killed · exit 1 · `cmd/sdev1-addr/main.go` · an operator diagnostic that exits 0 on a broken topology is worse than none; TestCommandExitsNonZeroOnBadTopology must go red · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · covers:the exit code
+- 2026-09-04 · 1d9be70 · mutant killed · exit 1 · `cmd/sdev1-addr/main.go` · the two renderings are built from one value so they cannot drift; making the text form print something the JSON form does not must turn TestCommandJSONMatchesTextOutput red · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · covers:the JSON and text forms agreeing
 
 ## Invariants
 
@@ -104,3 +105,4 @@ T3's stated Stop Condition — the two must be decided together, not separately.
 - 2026-09-04 · 489b1cf* · exit 0 · `set -o pipefail …` · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · ms:2108
 - 2026-09-04 · 489b1cf* · exit 0 · `set -o pipefail …` · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · ms:2347
 - 2026-09-04 · 489b1cf* · exit 0 · `set -o pipefail …` · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · ms:2083
+- 2026-09-04 · 1d9be70 · exit 0 · `set -o pipefail …` · acceptance-sha256:198b6f43d9baa0a9d994fa81db00e5c523353150bfa3040bbe37e44a8fcd92bb · ms:2074
