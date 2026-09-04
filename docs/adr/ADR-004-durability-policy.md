@@ -1,6 +1,6 @@
 # ADR-004: Express durability as a per-tier policy over a declared failure domain, with a refusal floor
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-09-04
 **Owner:** M
 **Spec:** None — no spec stage
@@ -149,21 +149,19 @@ policy, and the caller supplies the set.
 
 | Contract | Producing task | Consuming task(s) | Breaking? |
 |----------|----------------|-------------------|-----------|
-| `durability.Policy`, `durability.Tier`, `ErrBelowFloor` | T1 | T2, T3 | No — new surface |
-| `Policy.Validate()` | T2 | T3 | No — new surface |
+| `durability.Policy`, `durability.Tier`, `Policy.DomainsNeeded()` | T1 | T2 | No — new surface |
+| `Policy.Validate()`, `Policy.Satisfied()` | T2 | none in this record | No — new surface |
 
 ## Implementation
 
-⚠ **Not yet broken into tasks.** This record is `Proposed` and its task files
-have not been written, so there is deliberately no `tasks/` directory to point
-at — a link to one would be a pointer to nothing, which is the rot this corpus
-avoids elsewhere.
+Two tasks. See [`ADR-004-durability-policy/tasks/README.md`](ADR-004-durability-policy/tasks/README.md).
 
-The shape is expected to be three tasks: the policy type with its two refusals;
-validation of a policy against a topology map; and the runtime check that a
-given set of domains satisfies a policy. They are named here as intent rather
-than as a plan, and the record may not be Accepted or executed until they are
-written.
+The split is by the QUESTION each answers rather than by code size. T1 makes a
+policy impossible to construct in an unsafe shape. T2 answers the two separate
+questions about a given policy: could this cluster EVER satisfy it, and does it
+satisfy it RIGHT NOW. Those two are deliberately not one check — the first
+catches a misconfiguration at startup, the second catches a degraded cluster at
+write time, and a design with only one of them fails in the other's case.
 
 ## Consequences
 
