@@ -21,7 +21,7 @@ Two tasks, sequential.
 | ID | Title | Status | Covers | Acceptance |
 |----|-------|--------|--------|------------|
 | T1 | Read one answer out of many segments | done | — | `go test ./internal/core/leafstore/... -race -run '…thirteen tests…'` then the segstore, datom, temporal and ports suites |
-| T2 | Make a fact survive a restart, from the language | pending | — | `go test ./internal/core/session/... -race -run '…four tests…'`, then RUN `cmd/sdev1-ql` twice against one directory and grep the second run's output |
+| T2 | Make a fact survive a restart, from the language | done | — | `go test ./internal/core/session/... -race -run '…five tests…'`, then RUN `cmd/sdev1-ql` twice against one directory and grep the second run's output |
 
 Status: `pending` | `partial` | `blocked` | `done`.
 

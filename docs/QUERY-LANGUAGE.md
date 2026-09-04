@@ -191,6 +191,32 @@ learned it was really 6000, also from instant 100. Nothing was overwritten.
 That second question is the one every audit asks, and it is unanswerable in a
 store that overwrites. `--clock 1000` makes transaction identifiers small and
 reproducible so the example is readable; without it they are wall-clock
+## Keeping what you write
+
+By default `sdev1-ql` holds everything in memory and loses it on exit. `--dir`
+keeps the leaf in a directory instead:
+
+```bash
+go run ./cmd/sdev1-ql --dir ./leaf --clock 1000 \
+  --statements 'ASSERT planet-3 mass = "5.97e24"'
+
+go run ./cmd/sdev1-ql --dir ./leaf --clock 5000 \
+  --statements 'SELECT * FROM planet-3'
+```
+
+The second run prints `5.97e24`. It is a different process; nothing was carried
+over in memory.
+
+⚠ **What is written since the last seal is still in memory.** The run seals on the
+way out, so an ordinary invocation keeps everything — but a process killed
+mid-run loses what it had not sealed. That is a decision rather than an oversight:
+an acknowledged write is held by replicas in distinct failure domains, not by a
+disk, and making the disk the commit point would change the latency contract.
+
+★ **The leaf's segment files have meaningless names, on purpose.** A read merges
+them by the datoms' own transaction identifiers, so renaming, copying or restoring
+them in any order gives the same answer. A name that sorted would be a name
+something could come to depend on.
 nanoseconds.
 
 ⚠ **A sharp edge worth knowing.** `TRANSACTION n` builds a bound whose leaf and

@@ -1,5 +1,5 @@
-// Package session runs statements against an in-memory store, so the decisions
-// this system has made can be watched working.
+// Package session runs statements, so the decisions this system has made can be
+// watched working — in memory, or against a leaf on a disk.
 //
 // # Why it exists
 //
@@ -11,10 +11,22 @@
 //
 // # What it is not
 //
-// ⚠ IT IS NOT THE STORAGE ENGINE, and it must never be mistaken for one. Datoms
-// live in a map. They vanish when the process exits. There is no segment, no
-// leaf, no replica, no disk and no network. Nothing here is durable, and nothing
-// here scales.
+// ⚠ IT IS NOT THE STORAGE ENGINE, and it must never be mistaken for one. It
+// USES one: [Open] backs a session with a leaf
+// ([github.com/atvirokodosprendimai/sdev1/internal/core/leafstore]), so a fact
+// written by one process is read by the next. What this package does is run
+// statements; where the bytes live is that package's decision, not this one's.
+//
+// ⚠ And what it holds is still bounded by memory. [Open] rehydrates the WHOLE
+// leaf, because search, faceting and traversal have to enumerate what a leaf
+// holds and a read port deliberately cannot. That is honest for one leaf and one
+// process; it is not how an engine reads. There is still no replica, no network
+// and no second leaf.
+//
+// ⚠ [New] — a session with no store — is unchanged and is not a degraded mode.
+// Datoms live in a map and vanish when the process exits. Every statement behaves
+// identically either way, which is the property that keeps the two from becoming
+// two different languages.
 //
 // ⚠ AND IT MUST NOT BECOME THE SPECIFICATION. When the real engine lands it has
 // to agree with the RECORDS, not with this package. The way that is kept true is
@@ -46,4 +58,18 @@
 //   - MATCH SHAPE is refused by name. It needs a similarity metric chosen
 //     against a corpus, and an empty result would read as "nothing matched",
 //     which is the wrong answer to "this is not implemented".
+//
+// # Durability
+//
+// [Session.Seal] writes what has been asserted since the last seal into a
+// segment; [Session.Close] releases the leaf and does NOT seal.
+//
+// ⚠ That asymmetry is ADR-020's, not a convenience: an acknowledged write is held
+// in memory, so an unsealed tail is lost. Sealing on close would make the commit
+// point depend on how a process happened to end.
+//
+// ★ Rehydration goes through the same path as a live write, so the datom map, the
+// search index and the link resolver are populated by one piece of code. A
+// rehydration that restored only the datoms would leave SEARCH answering nothing
+// after a restart, with SELECT working and no error anywhere.
 package session

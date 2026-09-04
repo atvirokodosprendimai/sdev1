@@ -78,16 +78,24 @@ Four things in that transcript are the whole design, working:
 Statements also come from a file (`--file`) or standard input. Add `--tenant N`
 to write into a different tenant's subtree.
 
-> ⚠ **This session is in memory, not on a disk.** Everything it holds is lost when
-> the process exits. There IS a segment store now — `internal/core/segstore` writes
-> blocks to a file and finds them again — but nothing has wired the session onto it
-> yet (`BACKLOG.md` §28). See `internal/core/session`.
+> ★ **Add `--dir` and the facts stay.** `sdev1-ql --dir ./leaf` keeps the leaf in a
+> directory, so a fact written by one run is read by the next:
+>
+> ```
+> sdev1-ql --dir ./leaf --statements 'ASSERT planet-3 mass = "5.97e24"'
+> sdev1-ql --dir ./leaf --statements 'SELECT * FROM planet-3'
+>   planet-3   mass         5.97e24
+> ```
+>
+> ⚠ Without `--dir` everything is held in memory and lost on exit. And even with
+> it, what is written since the last seal is in memory — an acknowledged write is
+> held by replicas, not by a disk, which is a decision rather than an oversight.
 
 ## What you can actually do today
 
-**Short version: you can parse any query, run search, addressing and an in-memory
-session, and write a segment to a disk and read a block back out of it. What is
-missing between those two halves is the wiring and a query evaluator.**
+**Short version: you can parse any query; run search, addressing and a session;
+and write facts to a disk and read them back after a restart. What is missing is
+a query evaluator, a network, and everything that needs one.**
 
 | | Status | What that means |
 |---|---|---|
@@ -103,7 +111,7 @@ missing between those two halves is the wiring and a query evaluator.**
 | Taxonomies at a past instant — `TRAVERSE a DEPTH 2 AS OF t` | **parses + runs** | Free once links are datoms. ⚠ **Every hop resolves at one instant** — otherwise you get a tree that never existed. |
 | **Joins, `AND`/`OR`, `ORDER BY`, `COUNT`** | ❌ | See the query guide's boundary table for which are decisions and which are gaps. |
 | Writing a segment to a disk, reading a block back | **runs** | `internal/core/segstore`. Published by atomic rename, so a half-written segment is not addressable rather than being guarded; index verified before any offset from it is followed; the file is read through a memory mapping. macOS and Linux. |
-| A fact you `ASSERT` surviving a restart | ❌ | The session is in memory and is not wired to the segment store yet. This is the blocker under most of what is left. |
+| A fact you `ASSERT` surviving a restart | **runs** | `sdev1-ql --dir ./leaf`, twice. A leaf is a directory of segments; a read merges them by the datoms' own transaction identifiers, so ⚠ **renaming the files does not change the answer**. |
 | Reading a stored fact back | ❌ | No query evaluator. |
 | A server, a cluster, a network | ❌ | No transport. Everything is in-process. |
 
@@ -116,16 +124,16 @@ Read this before anything else on the page.
 
 **The decisions are made and recorded. Much of the machinery that would execute
 them is not built.** Twenty-four decision records are Accepted, each governs real
-Go code, and 30 of 31 packages pass under the race detector. Data can now outlive a
+Go code, and 31 of 32 packages pass under the race detector. A fact now survives
 process — but there is still no network transport and no query evaluator, so
 **you cannot yet start a server and store a fact through it.**
 
 | | |
 |---|---|
-| **Runs today** | 31 Go packages, 318 tests, race-clean — 30 packages carry tests and the thirty-first, `cmd/sdev1-ql`, is proved by its record's fence running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
-| **Exists now** | A segment store: blocks written to a file under a temporary name, published by rename, found again by key through a verified index and a memory mapping. |
+| **Runs today** | 32 Go packages, 337 tests, race-clean — 31 packages carry tests and the thirty-second, `cmd/sdev1-ql`, is proved by its record's fence running the built binary twice. Two binaries, `sdev1-addr` and `sdev1-ql`. |
+| **Exists now** | A storage engine you can use: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, and a session that rehydrates from one. |
 | **Does not exist** | A transport, a query evaluator, a node binary, a running cluster, and the wiring from the session to the segment store. |
-| **Honestly measured** | 193 mutants killed across the corpus, 11 recorded as *survived* — those rows are kept rather than deleted, because a mutant that lived is the record of what the suite could not see. |
+| **Honestly measured** | 211 mutants killed across the corpus, 11 recorded as *survived* — those rows are kept rather than deleted, because a mutant that lived is the record of what the suite could not see. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are
@@ -733,7 +741,7 @@ cmd/sdev1-addr/           the one binary: where an entity lives, and why
 docs/
   QUERY-LANGUAGE.md       the language, its grammar, and a tutorial
   diagrams/               the schematics on this page
-    adr/                    the decision corpus — twenty-five Accepted records
+    adr/                    the decision corpus — twenty-six Accepted records
     README.md             the index; says which half of each record is built
     FAILURES.md           the catalogue of what this does NOT survive
     BACKLOG.md            every deferred item, with a pointer back
@@ -742,6 +750,7 @@ internal/core/
   hlc tx temporal               time: clock, identity, the two axes
   command ql                    the write path's reads, and the language
   segment datom segstore        a block, a fact inside one, and a file of blocks
+  leafstore                     many segments answering as one leaf
   erasure crypt                 coding, and the erasure of a subject
   tail commit lease             the live tail, the commit point, fenced ownership
   routing prefetch admit        finding a leaf, reading ahead, shedding load

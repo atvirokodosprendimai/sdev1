@@ -34,11 +34,21 @@ worth carrying forward: a partially filled datom has `Assert` false, which is a
 RETRACTION — so a decoder that tolerates a short buffer withdraws a fact and
 reports success. Every refusal is total, and no datoms come back with an error.
 
-What is still missing above both: **§28** — nothing wires the session to any of
-it, so an `ASSERT` still dies with the process. And **§15** — when the live tail
-is sealed, and how a manifest naming which segments exist is published. ⚠ The
-rename makes each FILE atomic and says nothing about a SET of them, so publishing
-a segment and publishing the manifest that names it have to be ordered.
+**And it is wired up.** ADR-026 and `internal/core/leafstore` make a leaf a
+directory of segments, and `cmd/sdev1-ql --dir ./leaf` makes a fact written by one
+process readable by the next. **§28 is closed.**
+
+⚠ **The decision worth carrying forward is how a leaf MERGES its segments:** by the
+datoms' own transaction identifiers, never by filename and never by the order the
+files were opened. A directory listing is sorted by name, so merging in that order
+reads as deterministic while actually making the answer depend on what the files
+are CALLED — a rename, a copy or a restore then reorders history, and the wrong
+answer is a plausible one rather than an error.
+
+What is still missing above it: **§15** — when the live tail is sealed, and
+compaction. ⚠ A read touches every segment in the leaf, which is linear in seal
+count, and that is the cost that makes compaction matter rather than a cost
+this design hides.
 
 ### 2 · A query evaluator · §20
 
@@ -74,7 +84,7 @@ unimplementable.
 | **§26** | Mount the filesystem projection. Also needs a FUSE library — a portability decision, not a dependency bump — and enumeration from §20 |
 | **§8** | Test a real domain against the one-entity transaction boundary. Until something real is modelled against it, the boundary is reasoned rather than validated |
 | **§27** | Persist the search index and confirm candidates against the datoms. ⚠The confirmation is the rule that decays quietest, because skipping it makes every search faster and the damage shows only on data that changed |
-| **§28** | Make writes durable. `ASSERT`/`RETRACT` run against an in-memory session today and lose everything on exit |
+| **§28** | ✅ done — `sdev1-ql --dir ./leaf` keeps a leaf across runs, and a session rehydrates from it. What remains under this number is a write tool on the agent surface, and several attributes in one `ASSERT` |
 
 | **§29** | ✅ done — `ASSERT a orbits = ->b` writes a link and `TRAVERSE a DEPTH 2 AS OF 150` walks one. What remains under this number is inbound edges: nothing answers "what points AT this" without a scan |
 
