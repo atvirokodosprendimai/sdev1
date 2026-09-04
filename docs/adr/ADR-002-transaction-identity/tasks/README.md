@@ -25,7 +25,7 @@ strictly linear: each task consumes the one before it.
 
 | ID | Title | Status | Covers | Acceptance |
 |----|-------|--------|--------|------------|
-| T1 | The hybrid logical clock | pending | — | `go test ./internal/core/hlc/... -race` |
+| T1 | The hybrid logical clock | done | — | `go test ./internal/core/hlc/... -race` |
 | T2 | The transaction identifier and its total order | pending | — | `go test ./internal/core/tx/... -race` |
 | T3 | Two-axis visibility and the qualifier defaults | pending | — | `go test ./internal/core/temporal/...` |
 | T4 | A property suite that forces the two time axes apart | pending | — | `go test ./internal/core/temporal/... -run 'TestGenerator\|TestVisibleAgreesWithOracle'` |

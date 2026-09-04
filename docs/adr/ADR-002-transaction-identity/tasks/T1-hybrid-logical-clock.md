@@ -57,17 +57,21 @@ a node, so a data race here is a correctness defect and not a performance note.
 | `TestLogicalIncrementsWhenWallDoesNotAdvance` | `internal/core/hlc/hlc_test.go` | A frozen wall clock yields distinct increasing timestamps via the logical counter | — | S4 |
 | `TestMergeAdvancesPastRemote` | `internal/core/hlc/hlc_test.go` | After merging a remote timestamp, the next local `Now()` is strictly greater than that remote — the causality guarantee | — | S5 |
 | `TestTimestampOrdersLexicographically` | `internal/core/hlc/hlc_test.go` | The 12-byte encoding sorts as bytes in the same order `Compare` gives, so an index can order on it without decoding | — | S2 |
+| `TestDecodeRoundTrips` | `internal/core/hlc/hlc_test.go` | A timestamp survives the encoding an index orders it by, so the byte-comparable form is not a one-way projection | — | S2 |
 
 ## Reachability
 
 | Rung | How this task shows it |
 |------|------------------------|
-| 1 — exists | The five unit tests above. |
+| 1 — exists | The six unit tests above, one of them exercising eight concurrent callers under `-race`. |
 | 2 — something selects it | T2's `TxID` embeds an `hlc.Timestamp` and T2's fence builds against this package; deleting the embed breaks that build. |
 | 3 — the caller can discover it | Exported doc comments; `go doc ./internal/core/hlc` is the check. |
 | 4 — it is used | Nothing measures this yet. |
 
 ## Mutation Log
+
+- 2026-09-04 · bf64efd* · mutant killed · exit 1 · `internal/core/hlc/hlc.go` · when the wall clock is frozen or has moved backwards the logical counter is the only thing that advances; without it Now returns the same value twice and an append-only log records two events at one position. TestNowIsStrictlyMonotonic must go red · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · covers:the monotonicity invariant
+- 2026-09-04 · bf64efd* · mutant killed · exit 1 · `internal/core/hlc/hlc.go` · reading the host clock directly makes every backwards-jump and frozen-clock property untestable, which is the whole reason the reading is injected; TestNowSurvivesBackwardsWallClock must go red · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · covers:the injected wall-clock function
 
 ## Invariants
 
@@ -93,3 +97,6 @@ Alternatives, and reintroducing it changes what this package is.
 - Transporting a timestamp between nodes — this package produces and merges values; who sends them is ADR-009's.
 
 ## Verification Log
+- 2026-09-04 · bf64efd* · exit 0 · `set -o pipefail …` · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · ms:1639
+- 2026-09-04 · bf64efd* · exit 0 · `set -o pipefail …` · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · ms:1606
+- 2026-09-04 · bf64efd* · exit 0 · `set -o pipefail …` · acceptance-sha256:d6f8cb5ed8334c7515a78ded483360993326dcc7d10c8309727ab599b785c99a · ms:1610
