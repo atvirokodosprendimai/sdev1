@@ -48,19 +48,32 @@ exists, because the choice is encoded in the data itself.
 | ADR-005 | The binary segment format | Planned | Every stored byte. Versioned from the first release. |
 | ADR-006 | Erasure coding applies to sealed segments only; the scheme lives in the segment header | Planned | A scheme held only in configuration renders existing stripes unreadable when it changes. |
 | ADR-007 | Physical erasure is crypto-shredding, not log rewriting | Planned | Requires per-entity key separation in the format from the first version. |
-| ADR-008 | Placement is deterministic and computed by the client from a topology map | Planned | Decides whether the placement service sits in the write path. |
+| ADR-008 | Routing and discovery: aggregated prefix routes through frontdoor and border nodes, not a full map in every client | Planned | Decides how much a client must know to reach a key, and keeps a metadata service off the request path without making every client hold the cluster. A trie prefix is a routable prefix, so a border node advertises a whole subtree as one route and its table is bounded by fan-out and live depth rather than by data volume. Also owns the redirect that makes a stale route cache self-healing rather than a correctness bug. |
 | ADR-009 | Replication and leader election are multi-raft with coalesced heartbeats and fencing epochs | Planned | Fencing epochs are written into the log. |
 | ADR-010 | Retention, backup and purge are one fan-out with per-sink acknowledgement | Planned | A sink that is silently not wired lets a restore resurrect purged data. |
-| ADR-011 | One query language, combining a SQL-shaped relational surface, Oracle-style flashback clauses, and a graph traversal operator | Planned | The public contract. Time is a clause that composes with every query rather than a family of temporal verbs — that orthogonality is what keeps a combined language small. It must implement ADR-002's defaults table exactly, since its time qualifiers are where the two-axis defect recurs. |
+| ADR-011 | One query language: a SQL-shaped relational surface, flashback time clauses, a graph traversal operator, and shape matching with required and optional legs | Planned | The public contract. Time is a clause that composes with every term rather than a family of temporal verbs, and that orthogonality is what keeps a combined language small — it also makes a per-leg time qualifier free rather than a special case. Three things must be pinned or the language is untestable: it implements ADR-002's defaults table exactly, since its time qualifiers are where the two-axis defect recurs; shape similarity is a stated metric over an entity's attribute set with a stated threshold, not an undefined notion of "similar"; and an optional leg that matches nothing yields an unbound value rather than dropping the row, which is the corner every language with OPTIONAL gets wrong. |
 | ADR-012 | Observability is a cluster-wide event stream with a server-rendered console | Planned | Determines what every component is obliged to emit. |
-| ADR-013 | An MCP server exposing the engine as a knowledge graph for agents, built on the official `modelcontextprotocol/go-sdk` | Planned | A public contract whose tool descriptions are the only documentation its callers read. It exposes ADR-011's evaluator rather than becoming a second query surface. The SDK choice overrides the team's `effective-go` convention, on M's instruction of 2026-09-04. |
+| ADR-013 | An MCP server exposing the engine as a knowledge graph for agents, built on the official `modelcontextprotocol/go-sdk` | Planned | A public contract whose tool descriptions are the only documentation its callers read. It exposes ADR-011's evaluator rather than becoming a second query surface. The SDK choice deliberately departs from the team-wide Go convention, decided 2026-09-04. |
 | ADR-014 | A FUSE filesystem projection of the store | Planned | A public contract. Bitemporal storage makes it a natively snapshotting filesystem — an entity is a directory, its attributes are files, and a time qualifier is a snapshot path — and per-attribute history falls out of EAVT rather than being built. Like ADR-013 it is a projection over ADR-011's evaluator, not a further query surface. |
+| ADR-015 | Admission control: per-node counters, a declared traffic ceiling, and read shedding by subscription withdrawal | Planned | Determines what every node measures and what it does when it saturates. Shedding is subscription management rather than client routing — a loaded replica withdraws and work stops arriving. Read and write budgets are separate, because a leaf has one writer and a read burst must never be able to stop its writes. |
 
 Records ADR-002 onward are named here so the shape of the corpus is visible, and
 so a session picking one up knows what its neighbours already claim. Naming them
 is not accepting them; only a record with `Status: Accepted` governs anything.
 
 ## Conventions
+- **Write how it works, how it fails, and how it recovers.** A record that
+  explains only the happy path has documented the easy half. Every mechanism
+  states what happens when it breaks and what an operator does about it.
+- **No transcripts.** Requirements are stated as requirements, in the record's
+  own words. Conversations, prompts and quoted instructions do not appear in
+  README text, documentation or decision records — a reader a year from now
+  needs the requirement, not the exchange that produced it.
+- **Describe mechanisms, do not attribute them.** Name a technique where the
+  name is the thing — Raft, Reed-Solomon, a hybrid logical clock, a nested set —
+  and name a system where it is a deliberate featureset target. Do not write
+  "this is taken from" or "the way X does it": a reader needs to know how this
+  system behaves, and a comparison tells them how a different one behaves.
 
 - **Vocabulary.** This project describes itself at planetary scale, over the level
   labels `universe, planet, datacenter, rack, server, disk`. Records, documentation, README text and

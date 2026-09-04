@@ -87,13 +87,13 @@ Without it, reads from a replica are stale by an unbounded and unstatable amount
 The capability is still available; its consistency is simply not describable,
 which is worse than not offering it.
 
-This is a prerequisite for the independently-scaled read tier that M required on
-2026-09-04, so it is a dependency of that requirement rather than a refinement.
+This is a prerequisite for the independently-scaled read tier the design
+requires, so it is a dependency of that requirement rather than a refinement.
 
 ### §6 — The topology map is not versioned, so historical placement is unresolvable
 
 **Source:** ADR-001 T3 (`docs/adr/ADR-001-address-space/tasks/T3-placement.md`),
-Stop Condition. Raised by M on 2026-09-04.
+Stop Condition. Raised 2026-09-04.
 
 Placement is currently a function of `(leaf, current map)`. But a segment written
 a year ago was placed under *that year's* map, and finding it requires resolving
@@ -112,8 +112,7 @@ placement map has been retired.
 ### §7 — Spare servers have no claim or release policy
 
 **Source:** ADR-001 T3 (`docs/adr/ADR-001-address-space/tasks/T3-placement.md`),
-Out of Scope. Raised by M on 2026-09-04: *"it should have N spares server in DC so
-if server dies it could take one like in zfs"*.
+Out of Scope. Raised 2026-09-04.
 
 The requirement is a pool of declared spare servers per datacenter that hold no
 leaves until a failure, at which point one is claimed and becomes the

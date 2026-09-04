@@ -16,12 +16,12 @@ sdev1 is greenfield. At commit `2db614d` (branch `main`, clean, checked
 2026-09-04) the repository held `README.md`, `LICENSE` and `.gitignore` and no Go
 source, no schema and no prior decision record. Everything below is intent.
 
-The standing requirement was given verbatim on 2026-09-04: *"it needs binary data
-formad shared into 256 chunks. if you need to shard something always use 256
-chunks. hardcoded … we are making planetary scale 'structural data engine'
-imagine if datacenter is planet and dust it file in server in datacenter on disk.
-need infinite scale system sharded with master election for chunk to
-replicate/write to it."*
+The requirement this record answers: data is stored in a binary format sharded
+into 256 chunks, and 256 is used wherever the system shards anything at all. The
+cluster must scale without a built-in ceiling. Each chunk elects a master that
+accepts its writes and drives its replication. The system is described through
+containment at planetary scale — a file on a disk, in a server, in a rack, in a
+datacenter.
 
 That sentence admits two readings, and they differ by an unbounded factor.
 
@@ -32,8 +32,8 @@ contradicts the requirement stated in the same breath — a 256-server ceiling i
 not infinite scale, and no amount of hardware removes it.
 
 Under the second reading, 256 is the **fan-out of one level**, and scale comes
-from depth rather than from width. This reading is already present in the
-requirement's own imagery: universe, planet, datacenter, rack, server, disk is a
+from depth rather than from width. It is the reading the containment description
+already implies: universe, planet, datacenter, rack, server, disk is a
 statement about levels of containment, not about a count. A key hashed to 32 bytes descends
 one byte per level; each byte selects one of 256 children; 32 levels of 256-way
 fan-out address 2^256 leaves. The ceiling disappears without 256 ever changing.
@@ -173,9 +173,13 @@ Four tasks. See [`ADR-001-address-space/tasks/README.md`](ADR-001-address-space/
   one entity lives in one leaf, so a per-entity transaction is single-leaf and
   needs no distributed commit — which is what makes ADR-003's boundary available
   as a choice at all.
-- **Positive:** placement is *computed* from the key, so a client that holds the
-  topology map needs no per-request metadata lookup. The topology map is small
-  and changes rarely; per-object location is never stored anywhere.
+- **Positive:** placement is *computed* from the key rather than looked up, so no
+  metadata service sits on the request path and per-object location is never
+  stored anywhere. ⚠This does NOT mean every client holds the whole map: a
+  computation needs only the slice of the map covering the level it is resolving,
+  which is what lets routing be aggregated into prefix routes (ADR-008) instead of
+  distributed as one large table. The claim is that placement needs no lookup, not
+  that every participant needs the whole cluster.
 - **Negative:** ordered scans over entity identifiers are gone. The trie orders
   by digest, which is deliberately unrelated to any meaningful order. Any query
   that wants "entities between A and B" needs a secondary index and will pay for
