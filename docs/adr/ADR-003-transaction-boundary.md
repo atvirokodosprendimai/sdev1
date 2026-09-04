@@ -1,6 +1,6 @@
 # ADR-003: Make the entity the transaction boundary, and give the write path its own reads
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-09-04
 **Owner:** M
 **Spec:** None — no spec stage

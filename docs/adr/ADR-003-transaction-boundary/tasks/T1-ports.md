@@ -8,7 +8,7 @@
 **Consumes:** `addr.LeafID` from ADR-001; `tx.TxID` from ADR-002
 **Data dependency:** hermetic
 **Proof map:** v1
-**Rests-on:** `the absence of a write method on Reader`, `the narrowness of what a read model is handed`
+**Rests-on:** `Store being exactly both halves`, `the notification carrying an identifier rather than state`, `retraction being an explicit flag`
 
 ## Goal
 
@@ -66,6 +66,16 @@ go test ./internal/core/ports/... -run 'TestReadModel|TestReader|TestStore|TestS
 
 ## Mutation Log
 
+- 2026-09-04 · cbd49ea* · mutant inconclusive · exit 1 · `internal/core/ports/ports.go` · embedding Writer in Reader means everything handed a Reader can write, and the whole read/write split becomes decorative; TestReadModelCannotWrite must go red · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · covers:the absence of a write method on Reader
+  ```
+  the fence failed on a build/parse error, not an assertion
+  ```
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/ports/ports.go` · a notification carrying rendered state lets a slow consumer apply an older render over a newer one; TestPublisherCarriesAnIdentifierNotState must go red · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · covers:the notification carrying an identifier rather than state
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/ports/ports.go` · without the flag a retraction could only be expressed as an absent datom, which is indistinguishable from a fact that was never recorded; TestDatomCarriesRetractionExplicitly must go red · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · covers:retraction being an explicit flag
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/ports/ports.go` · a Store missing its Writer half leaves the write path unable to append, and the failure would surface at a distant call site rather than here; TestStoreSatisfiesBothHalves must go red · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · covers:Store being exactly both halves
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/ports/ports.go` · re-bound: a notification carrying rendered state lets a slow consumer apply an older render over a newer one · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · covers:the notification carrying an identifier rather than state
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/ports/ports.go` · re-bound: without the flag a retraction could only be an absent datom, indistinguishable from a fact never recorded · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · covers:retraction being an explicit flag
+
 ## Invariants
 
 - `Reader` has no method that mutates. This is checked by enumerating its method set, so widening it is a test failure rather than a review miss.
@@ -76,7 +86,8 @@ go test ./internal/core/ports/... -run 'TestReadModel|TestReader|TestStore|TestS
 
 ## Risks
 
-- A reflection-based method-set assertion is coarser than a compile failure, and it can be weakened by editing the test rather than the interface. That is a review obligation; the mutation entry is what shows the assertion currently has teeth.
+- A reflection-based method-set assertion is coarser than a compile failure, and it can be weakened by editing the test rather than the interface. That is a review obligation.
+- ★ `TestReadModelCannotWrite` — this record's own `Enforced-by` check — CANNOT BE BOUND BY A MUTATION, and the reason is structural rather than an oversight. Any mutation making `Reader` writable also stops the test file's stub from satisfying `Reader`, so the mutant does not compile and `adr-verify` grades it INCONCLUSIVE: a skipped mutant wearing a kill's exit code. Binding it would need the interface and its implementations mutated together, which is more than one file. Measured 2026-09-04. The assertion is still the right one and still runs; what is missing is proof that it can fail, and `Rests-on` therefore does not claim it. ⚠Do not "fix" this by mutating the test itself — that measures the test against itself and proves nothing.
 - Interfaces defined before any implementation exists routinely turn out slightly wrong. They are deliberately minimal for that reason — widening later is additive, and narrowing is not.
 
 ## Stop Condition
@@ -92,3 +103,11 @@ whichever record introduces it, or the asymmetry is decorative.
 - The subscription that drives a read model — that is ADR-010's.
 
 ## Verification Log
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · ms:571
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · ms:564
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · ms:623
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · ms:564
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · ms:530
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · ms:599
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · ms:577
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:657e64ec3addc941b81e6ed9c220f3c4dbbeaa69792b89ac1453c50ecfbab563 · ms:655

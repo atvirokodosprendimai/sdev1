@@ -28,7 +28,7 @@ change rather than on this one.
 
 ## Ordered Steps
 
-1. [S1] Write the failing tests first (TDD red): `TestNoReadPackageDependsOnWriter`, `TestExemptionListIsExhaustive`, `TestGuardScansEveryPackage`. Run the Acceptance fence and confirm it is red. ⚠Check each name is SELECTED by the fence's `-run` filter before running any mutant. [proof: acceptance]
+1. [S1] Write the failing tests first (TDD red): `TestNoReadPackageDependsOnWriter`, `TestExemptionListIsExhaustive`, `TestGuardScansEveryPackage`, `TestGuardFlagsAKnownOffender`. Run the Acceptance fence and confirm it is red. ⚠Check each name is SELECTED by the fence's `-run` filter before running any mutant. [proof: acceptance]
 2. [S2] Implement the scan: walk every Go file under `internal/`, and flag any file that names `ports.Writer` or `ports.Store` unless its package is on the exemption list.
 3. [S3] Keep the exemption list explicit and short — the write path only. An exemption is a decision, so it is written down with a reason beside it rather than inferred from a path pattern.
 4. [S4] ★ Add `TestGuardScansEveryPackage`: assert the walk actually visited more than a trivial number of files. A guard whose scan silently matches nothing reads exactly like a guard that passed, and that is the failure this class of test has. [proof: mutation]
@@ -38,7 +38,7 @@ change rather than on this one.
 
 ```bash
 set -o pipefail
-go test ./internal/core/ports/... -run 'TestNoReadPackage|TestExemption|TestGuardScans' -count=1 2>&1 | tee /tmp/adr003-t3.out \
+go test ./internal/core/ports/... -run 'TestNoReadPackage|TestExemption|TestGuard' -count=1 2>&1 | tee /tmp/adr003-t3.out \
   && ! grep -qE "no tests to run|matched no packages|^FAIL|^--- FAIL" /tmp/adr003-t3.out \
   && go test ./internal/... -count=1
 ```
@@ -50,6 +50,7 @@ go test ./internal/core/ports/... -run 'TestNoReadPackage|TestExemption|TestGuar
 | `TestNoReadPackageDependsOnWriter` | `internal/core/ports/asymmetry_test.go` | No package outside the exemption list names a writable port, so a read model cannot acquire one by import | — | S2, S3 |
 | `TestExemptionListIsExhaustive` | `internal/core/ports/asymmetry_test.go` | Every exemption names a package that exists, so a stale entry cannot silently widen the blind spot | — | S5 |
 | `TestGuardScansEveryPackage` | `internal/core/ports/asymmetry_test.go` | The walk visited a non-trivial number of files — the assertion that separates "the guard found nothing" from "the guard looked at nothing" | — | S4 |
+| `TestGuardFlagsAKnownOffender` | `internal/core/ports/asymmetry_test.go` | The guard's own logic, run against a file that SHOULD be flagged and two that should not — the positive control without which every other assertion here is unfalsifiable, because the tree contains no offender | — | S2, S3 |
 
 ## Reachability
 
@@ -62,6 +63,13 @@ go test ./internal/core/ports/... -run 'TestNoReadPackage|TestExemption|TestGuar
 
 ## Mutation Log
 
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/ports/asymmetry_test.go` · narrowing the walk to the guard own package makes it report clean forever about nothing, which is a source-scanning guard characteristic failure; TestGuardScansEveryPackage must go red · acceptance-sha256:2384ed87baaf9178a29b509bce3ec46682267963d5fa47f8783f2d7c7cf4af9f · covers:the scan covering every package
+- 2026-09-04 · cbd49ea* · mutant inconclusive · exit 1 · `internal/core/ports/asymmetry_test.go` · exempting every package makes the guard detect nothing; the clean tree cannot show this, so the positive control TestGuardFlagsAKnownOffender is what must go red · acceptance-sha256:2384ed87baaf9178a29b509bce3ec46682267963d5fa47f8783f2d7c7cf4af9f · covers:the exemption being narrow
+  ```
+  the fence failed on a build/parse error, not an assertion
+  ```
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/ports/asymmetry_test.go` · second attempt; the first was INCONCLUSIVE because it left pkg unused and did not compile. Exempting every package makes the guard detect nothing, and the clean tree cannot show that — the positive control TestGuardFlagsAKnownOffender is what must go red · acceptance-sha256:2384ed87baaf9178a29b509bce3ec46682267963d5fa47f8783f2d7c7cf4af9f · covers:the exemption being narrow
+
 ## Invariants
 
 - The exemption list is explicit, short, and carries a reason per entry.
@@ -71,6 +79,7 @@ go test ./internal/core/ports/... -run 'TestNoReadPackage|TestExemption|TestGuar
 ## Risks
 
 - ★ A source-scanning guard's characteristic failure is a scan whose universe is empty or wrongly filtered: it reports clean, forever, about nothing. `TestGuardScansEveryPackage` is the answer and is why S4 carries `[proof: mutation]` — the mutant to run narrows the walk, and the suite must go red.
+- ★ AND THE SECOND CHARACTERISTIC FAILURE, found while writing this task: A NEGATIVE ASSERTION OVER A CLEAN TREE IS UNFALSIFIABLE. With no offender present, `TestNoReadPackageDependsOnWriter` passes whether the guard works or not — widening the exemption check to exempt everything would not fail it. The guard's logic is therefore extracted and run against a KNOWN-BAD input as well as the real tree. A guard with no positive control cannot tell "nothing is wrong" from "nothing is being checked", and both read as green.
 - The scan matches identifier names in source text, so it can be defeated by an alias or an indirection. It is a guard against carelessness rather than against determination, and saying so is more useful than implying otherwise.
 
 ## Stop Condition
@@ -86,3 +95,7 @@ entries.
 - Any runtime check; this guard is a build-time property and a runtime one would be a different mechanism with different costs.
 
 ## Verification Log
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:2384ed87baaf9178a29b509bce3ec46682267963d5fa47f8783f2d7c7cf4af9f · ms:1287
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:2384ed87baaf9178a29b509bce3ec46682267963d5fa47f8783f2d7c7cf4af9f · ms:1301
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:2384ed87baaf9178a29b509bce3ec46682267963d5fa47f8783f2d7c7cf4af9f · ms:1301
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:2384ed87baaf9178a29b509bce3ec46682267963d5fa47f8783f2d7c7cf4af9f · ms:1169

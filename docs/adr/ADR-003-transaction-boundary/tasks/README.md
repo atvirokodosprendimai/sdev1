@@ -22,9 +22,9 @@ Three tasks, so sequential order only — no wave table and no DAG.
 
 | ID | Title | Status | Covers | Acceptance |
 |----|-------|--------|--------|------------|
-| T1 | The read/write port asymmetry | pending | — | `go test ./internal/core/ports/... -run 'TestReadModel\|TestReader\|TestStore\|TestSnapshot\|TestWriter\|TestPublisher\|TestDatom'` |
-| T2 | The single-entity transaction, and its refusal | pending | — | `go test ./internal/core/command/... -run 'TestNew\|TestAssert\|TestRetract\|TestRefusal\|TestTransaction'` |
-| T3 | The structural guard that keeps the asymmetry real | pending | — | `go test ./internal/core/ports/... -run 'TestNoReadPackage\|TestExemption\|TestGuardScans'` |
+| T1 | The read/write port asymmetry | done | — | `go test ./internal/core/ports/... -run 'TestReadModel\|TestReader\|TestStore\|TestSnapshot\|TestWriter\|TestPublisher\|TestDatom'` |
+| T2 | The single-entity transaction, and its refusal | done | — | `go test ./internal/core/command/... -run 'TestNew\|TestAssert\|TestRetract\|TestRefusal\|TestTransaction\|TestDatoms'` |
+| T3 | The structural guard that keeps the asymmetry real | done | — | `go test ./internal/core/ports/... -run 'TestNoReadPackage\|TestExemption\|TestGuard'` |
 
 Status: `pending` | `partial` | `blocked` | `done`.
 

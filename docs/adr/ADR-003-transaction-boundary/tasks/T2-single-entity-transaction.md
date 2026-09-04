@@ -37,7 +37,7 @@ than trusted.
 
 ```bash
 set -o pipefail
-go test ./internal/core/command/... -run 'TestNew|TestAssert|TestRetract|TestRefusal|TestTransaction' -count=1 2>&1 | tee /tmp/adr003-t2.out \
+go test ./internal/core/command/... -run 'TestNew|TestAssert|TestRetract|TestRefusal|TestTransaction|TestDatoms' -count=1 2>&1 | tee /tmp/adr003-t2.out \
   && ! grep -qE "no tests to run|matched no packages|^FAIL|^--- FAIL" /tmp/adr003-t2.out \
   && go test ./internal/core/ports/... ./internal/core/addr/... ./internal/core/tx/... -count=1
 ```
@@ -52,6 +52,7 @@ go test ./internal/core/command/... -run 'TestNew|TestAssert|TestRetract|TestRef
 | `TestRefusalHappensBeforeAnythingIsRecorded` | `internal/core/command/command_test.go` | A refused operation leaves the transaction's datom count unchanged, so a rejected transaction carries no partial state | — | S4 |
 | `TestRetractionIsADatomNotAnAbsence` | `internal/core/command/command_test.go` | A retraction appears as a datom with the flag cleared, so "no longer true" is distinguishable from "never recorded" | — | S5 |
 | `TestTransactionResolvesToOneLeaf` | `internal/core/command/command_test.go` | Every datom in a transaction resolves to the same leaf, which is what makes the commit single-leaf and therefore local | — | S2 |
+| `TestDatomsIsACopy` | `internal/core/command/command_test.go` | A caller mutating the returned slice cannot change the transaction's own datoms, so the boundary cannot be defeated after the fact | — | S2 |
 
 ## Reachability
 
@@ -63,6 +64,9 @@ go test ./internal/core/command/... -run 'TestNew|TestAssert|TestRetract|TestRef
 | 4 — it is used | Nothing measures this yet. |
 
 ## Mutation Log
+
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/command/command.go` · without the refusal a transaction silently spans entities and therefore leaves, and every commit becomes a distributed one; TestAssertRefusesASecondEntity and TestRetractRefusesASecondEntity must go red · acceptance-sha256:c3c75cb7e4805cdafc711fc0bc43d0f16a738245c024fddc2d688db125f3a127 · covers:the cross-entity refusal
+- 2026-09-04 · cbd49ea* · mutant killed · exit 1 · `internal/core/command/command.go` · recording on the refusal path leaves a rejected transaction carrying partial state, so discarding it is no longer safe; TestRefusalHappensBeforeAnythingIsRecorded must go red · acceptance-sha256:c3c75cb7e4805cdafc711fc0bc43d0f16a738245c024fddc2d688db125f3a127 · covers:the refusal happening before anything is written
 
 ## Invariants
 
@@ -89,3 +93,6 @@ this task.
 - Validating an assertion against current state — the writer's own index is ADR-005's.
 
 ## Verification Log
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:c3c75cb7e4805cdafc711fc0bc43d0f16a738245c024fddc2d688db125f3a127 · ms:1210
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:c3c75cb7e4805cdafc711fc0bc43d0f16a738245c024fddc2d688db125f3a127 · ms:1231
+- 2026-09-04 · cbd49ea* · exit 0 · `set -o pipefail …` · acceptance-sha256:c3c75cb7e4805cdafc711fc0bc43d0f16a738245c024fddc2d688db125f3a127 · ms:1232

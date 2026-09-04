@@ -232,3 +232,4 @@ not a rollback of this decision; it is the decision working.
 ## Follow-ups
 
 - [ ] Decide the topology map's versioning and distribution mechanism when ADR-008 is authored — this record fixes its content, not how it reaches a client.
+- [ ] ⚠ Decide whether a key carries a leading TENANT prefix before any data is written. ADR-016 argues it should: a tenant would occupy a contiguous subtree, which makes tenant deletion, data residency and per-tenant policy fall out of the addressing model rather than being built beside it. This record's rule 1 currently hashes the entity identifier alone, so adopting it changes what every stored key means and is not retrofittable.
