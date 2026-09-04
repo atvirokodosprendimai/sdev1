@@ -129,6 +129,30 @@ What a decision here must answer: who declares a server dead and after how long,
 which spare is chosen, whether the claim is automatic or authorised, whether the
 spare detaches on repair, and what happens when the spare pool is exhausted.
 
+### §8 — No real domain has been tested against the one-entity transaction boundary
+
+**Source:** ADR-003 (`docs/adr/ADR-003-transaction-boundary.md`), Out of Scope
+and its stated falsifier.
+
+ADR-003 confines a transaction to one entity, and that single constraint is what
+removes the need for distributed commit from the entire system. Its falsifier is
+correspondingly large: the decision fails if a legitimate domain operation cannot
+be expressed within one entity.
+
+Nothing has tested it. The refusal is implemented and proven to fire, but no real
+domain has been modelled against it, so the question of whether the boundary is
+liveable is open rather than answered.
+
+What a decision here must answer: model at least one non-trivial domain against
+the boundary, and for any operation that resists it, decide between expressing it
+as several transactions plus a compensating one, widening the boundary (which
+pulls in distributed commit and reopens ADR-003's central choice), or declaring
+the operation out of scope for this engine.
+
+⚠ Widening later is additive and therefore cheap; narrowing later is not. The
+cost of leaving this open is bounded, and the cost of guessing wrong in the
+permissive direction is not.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
