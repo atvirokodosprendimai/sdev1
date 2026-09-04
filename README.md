@@ -98,8 +98,8 @@ engine.**
 | `ASSERT … VALID FROM … TO …` / `RETRACT …` | **parses + runs** | Creates and retracts facts in the in-memory session. Valid time is yours; **transaction time is never** — stating it is a parse error. |
 | Reading a fact back, at any instant | **runs** | `SELECT … AS OF …` against the session, through the real visibility predicate. |
 | **`INSERT` / `UPDATE` / `DELETE`** | ❌ **will never exist** | The store appends. An update is an assertion, a delete a retraction, an erasure a destroyed key. |
-| **Links — `relate`, `related`, references between entities** | ❌ **do not exist** | `Datom.Value` is untyped bytes, so a reference is indistinguishable from a string. Nothing can traverse. |
-| **Taxonomies / hierarchies** | ❌ **do not exist** | They need links first. Once links are bitemporal datoms, "what did the hierarchy look like in March" falls out — but none of it is built. |
+| Links — typed references between entities | **model done**, not in the language | A value carries a *kind*: literal or reference. `link.Walk` traverses them correctly. ⚠ Writing one in the QL is `BACKLOG.md` §29. |
+| Taxonomies / hierarchies, at a past instant | **model done**, not in the language | Free once links are datoms: a hierarchy is links, links are bitemporal, so "what did this look like in March" is a traversal at an instant. ⚠ **Every hop resolves at one instant** — otherwise you get a tree that never existed. |
 | **Joins, `AND`/`OR`, `ORDER BY`, `COUNT`** | ❌ | See the query guide's boundary table for which are decisions and which are gaps. |
 | Storing anything on a disk | ❌ | No storage engine — the session is in memory and loses everything on exit. This is the blocker under almost everything else. |
 | Reading a stored fact back | ❌ | No query evaluator. |
@@ -384,10 +384,10 @@ ASSERT planet-7 class = 'terrestrial' VALID FROM 100 TO 200
 RETRACT planet-7 class = 'terrestrial' VALID FROM 500
 ```
 
-⚠ **There are no links** — no `relate`, no references between entities — so
-nothing can be traversed and there are no taxonomies. That is a real gap, not an
-omission from this list. `Datom.Value` is untyped bytes, so a reference cannot be
-told from a string.
+⚠ **Links have a model but no syntax yet.** A value carries a *kind* — literal or
+reference — and `link.Walk` traverses references correctly, including the rule
+that makes historical traversal trustworthy. Saying either in the language is
+`BACKLOG.md` §29.
 
 Run any of the above with `cmd/sdev1-ql` — see the [quick start](#quick-start--create-records-read-them-back-search-them).
 
@@ -520,6 +520,47 @@ index itself, the ranking function and the `SEARCH` grammar are `BACKLOG.md` §2
 disclosive. This confines the leak from the subject to the term — a dictionary is
 shared, and a rare enough term approximates an identifier. That is why
 high-cardinality identifiers should not be indexed.
+
+## Links, and hierarchies in time
+
+An entity refers to another by a value whose **kind** says it is a reference —
+stored, never inferred. ⚠ `"planet-9"` as a name and as a link are the same nine
+bytes; guessing from shape would make every identifier-looking string an
+accidental edge, and the graph would change whenever unrelated data did.
+
+**A link is a datom**, not an edge in a side table. So it is bitemporal,
+retractable, bound to one entity and inside the tenant subtree — not because
+those were decided again, but because a link is not a new kind of thing.
+
+★ **Taxonomies therefore cost nothing.** A hierarchy is links; links are datoms;
+datoms are bitemporal. "What did this hierarchy look like in March" is a
+traversal at an instant, rather than a feature somebody had to build.
+
+⚠ **And this is the trap that makes it a decision rather than a data type.** A
+traversal that resolves each hop at its own instant **produces a tree that never
+existed.** Ask for March, and the natural implementation reads the root at March
+and its children with a fresh read — at today's instant. Every node in the answer
+is real, every edge existed at some point, and the shape was never true at any
+moment. Nothing about it looks wrong, and it is wrong exactly where a bitemporal
+store is supposed to be trustworthy.
+
+So a walk takes **one** snapshot and hands it to every hop, and the resolver
+takes that snapshot as a parameter — a caller structurally cannot resolve a hop
+without saying when.
+
+Three more rules, each with a reason:
+
+- **A walk is depth-bounded and the bound is required.** An unbounded walk over a
+  graph the caller does not control is a scan they did not ask for.
+- **A cycle is reported, never truncated** — a partial path reads exactly like a
+  complete one. And cycles are real here: a hierarchy edited over time can hold a
+  loop that exists only at instants *between* two edits.
+- ⚠ **Missing, retracted and erased targets are one answer.** Distinguishing them
+  would let a caller discover whether a subject was erased by walking to it,
+  which is the oracle crypto-shredding exists to remove.
+
+The model and the walk are built. Writing a link or a traversal in the language
+is `BACKLOG.md` §29.
 
 ## How it fails, and how it recovers
 

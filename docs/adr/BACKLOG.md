@@ -755,6 +755,39 @@ govern and adds no rule of its own, so the engine has to agree with the RECORDS.
 The failure here is slow and looks like progress — somebody adds a convenience to
 the session, the engine copies it, and a rule nobody wrote down is what runs.
 
+### §29 — Links exist as a model and cannot be written or walked from the language
+
+**Source:** ADR-023 (`docs/adr/ADR-023-links-and-traversal.md`), Out of Scope; and
+`ADR-023-links-and-traversal/tasks/T2-links-in-the-language.md`.
+
+A reference is a typed value and `link.Walk` resolves one correctly. Nothing lets
+a caller say either in the language.
+
+**A reference literal.** `ASSERT` needs a way to state that a value IS a link,
+distinct from a quoted string. ⚠ Whatever form is chosen must be unambiguous for
+arbitrary content — a marker character makes any value legitimately starting with
+it into an accidental edge, which is the same class of mistake as inferring from
+shape.
+
+**A traversal statement.** `TRAVERSE … DEPTH n` with ONE time clause for the
+whole walk. ⚠ There must be no per-hop qualifier, and this is the one to hold the
+line on: a shape query has a per-leg clause and it is genuinely right there, so
+the symmetry is tempting. Here it would let a caller ASK for a tree assembled from
+several instants — turning ADR-023's central defect from something implementable
+into something documented.
+
+**Inbound edges.** "What points at this" is a different index, not a different
+walk, and it interacts with §27's index work rather than with the traversal.
+
+**And what T1 could not prove.** The walk takes a `Resolver` and stores nothing,
+so nothing yet demonstrates that a real storage layer passes ONE snapshot rather
+than taking a fresh read per hop. The rule is easy to hold in a pure function and
+easy to lose behind a cache (§12).
+
+**A depth default, if the language should have one.** ADR-023 requires a bound
+and deliberately does not say what a sensible one is. Choosing without a real
+hierarchy to measure would be a constant nobody wrote down.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.

@@ -63,19 +63,7 @@ unimplementable.
 | **§27** | Persist the search index and confirm candidates against the datoms. ⚠The confirmation is the rule that decays quietest, because skipping it makes every search faster and the damage shows only on data that changed |
 | **§28** | Make writes durable. `ASSERT`/`RETRACT` run against an in-memory session today and lose everything on exit |
 
-## The biggest gap of all
-
-**There are no links.** No `relate`, no references between entities, so nothing
-can be traversed and there are no taxonomies. `Datom.Value` is untyped bytes, so
-a reference cannot be told from a string.
-
-⚠ The interesting part is not the value type — it is **traversal in time**. Once
-links are bitemporal datoms, "what did this hierarchy look like last March" falls
-out for free, but only if every hop of a traversal resolves at the SAME instant.
-Resolving the root at `t` and its children at "now" produces a tree that never
-existed, and nothing about the answer looks wrong. Cycles need an answer too.
-
-That is a record nobody has written yet.
+| **§29** | Write a link and walk one from the language. ⚠A traversal statement must carry ONE time clause for the whole walk — a per-hop qualifier would make the tree-that-never-existed something a caller can request on purpose |
 
 ---
 

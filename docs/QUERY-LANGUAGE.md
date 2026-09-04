@@ -155,6 +155,51 @@ leaves the `TRANSACTION` clause unconsumed and the statement is refused with
 
 ![Two time axes, and what each clause combination resolves to](diagrams/bitemporal.svg)
 
+### A worked example: the backdated correction
+
+This is the thing bitemporality exists for, and you can run it:
+
+```bash
+go run ./cmd/sdev1-ql --clock 1000 \
+  --statements "ASSERT planet-7 mass = 5972 VALID FROM 100" \
+  --statements "ASSERT planet-7 mass = 6000 VALID FROM 100" \
+  --statements "SELECT mass FROM planet-7 AS OF 150" \
+  --statements "SELECT mass FROM planet-7 AS OF 150 TRANSACTION 1001"
+```
+
+```
+ASSERT planet-7 mass = 5972 VALID FROM 100
+  txn     1000.0@1:00#1
+ASSERT planet-7 mass = 6000 VALID FROM 100
+  txn     1001.0@1:00#2
+
+SELECT mass FROM planet-7 AS OF 150
+  planet-7   mass         6000
+
+SELECT mass FROM planet-7 AS OF 150 TRANSACTION 1001
+  planet-7   mass         5972
+```
+
+Both writes claim the *same* valid time — mass was 5972 from instant 100, then we
+learned it was really 6000, also from instant 100. Nothing was overwritten.
+
+- **`AS OF 150`** asks *what was true at 150?* → **6000**, the correction.
+- **`AS OF 150 TRANSACTION 1001`** asks *what did we believe at 150, using only
+  what we knew by transaction 1001?* → **5972**, the original.
+
+That second question is the one every audit asks, and it is unanswerable in a
+store that overwrites. `--clock 1000` makes transaction identifiers small and
+reproducible so the example is readable; without it they are wall-clock
+nanoseconds.
+
+⚠ **A sharp edge worth knowing.** `TRANSACTION n` builds a bound whose leaf and
+sequence are zero, which is the *lowest* identifier at instant `n` — so it
+excludes transactions minted **at** `n`, not just after it. Copying an identifier
+from the output and passing its wall value gives you the state **just before**
+that write. Above, `TRANSACTION 1001` excludes the write at 1001, which is what
+makes it show the pre-correction answer. To include a write, bound at the next
+instant.
+
 ## The defaults table
 
 The parse tree records **what you wrote**, unresolved. Defaults are applied in

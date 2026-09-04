@@ -39,6 +39,11 @@ func main() {
 				Usage: "tenant identifier (0-65535)",
 				Value: 7,
 			},
+			&cli.IntFlag{
+				Name: "clock",
+				Usage: "start the clock here and advance it by one per statement, so transaction " +
+					"identifiers are small and reproducible; omit to use the wall clock",
+			},
 		},
 		Action: run,
 	}
@@ -57,9 +62,7 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no statements: pass --statements, --file, or pipe them in")
 	}
 
-	s := session.New(addr.TenantFromUint(uint16(cmd.Uint("tenant"))), func() int64 {
-		return time.Now().UnixNano()
-	})
+	s := session.New(addr.TenantFromUint(uint16(cmd.Uint("tenant"))), clock(int64(cmd.Int("clock"))))
 
 	for _, src := range statements {
 		result, err := s.Run(src)
@@ -72,6 +75,26 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		report(result)
 	}
 	return nil
+}
+
+// clock returns the instant source for a session.
+//
+// ★ With --clock, the wall ADVANCES by one on every reading rather than being
+// frozen. A frozen wall would pin every transaction to the same instant and let
+// only the logical counter move, which makes `TRANSACTION <n>` useless as a
+// bound — every datom would sort after it. Advancing gives each write a distinct,
+// small, copy-pasteable identifier, which is what makes a bitemporal example
+// teachable at all.
+func clock(start int64) func() int64 {
+	if start == 0 {
+		return func() int64 { return time.Now().UnixNano() }
+	}
+	tick := start
+	return func() int64 {
+		v := tick
+		tick++
+		return v
+	}
 }
 
 // collect gathers statements from the flags and from standard input.
