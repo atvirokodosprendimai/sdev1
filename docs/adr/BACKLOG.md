@@ -191,6 +191,75 @@ revoking access today would otherwise leave the revoked party able to read last
 year. Grants are naturally datoms in a reserved system tenant, which makes "who
 had access at time T" answerable and makes revocation a retraction.
 
+### §12 — Nothing writes a segment to a disk, or finds a block inside one
+
+**Source:** ADR-005 (`docs/adr/ADR-005-segment-format.md`), Out of Scope; and
+both its task files, whose Out of Scope defers anything that opens a file here.
+
+`internal/core/segment` decides what a block IS and refuses to touch a
+filesystem. That was deliberate — the format has to be right before any byte
+reaches a disk, and keeping the package to byte slices is what makes every
+property testable with no storage engine. It leaves three things undecided.
+
+**The writer.** Blocks must be packed into a segment, the segment made durable,
+and the moment it becomes readable defined. A segment is immutable once sealed,
+so "sealed" is a state transition somebody has to own, and ADR-004 already
+attaches a different durability policy to each side of it.
+
+**The block index.** A segment header records how many blocks it holds and each
+block header is fixed-width, so a reader can stride — but striding a segment to
+find one subject is a linear scan. What maps a subject to a block offset, where
+that map lives, and whether it is in the segment or beside it, are open. This is
+the question the layered-index discussion was circling and it should be answered
+with it rather than separately.
+
+**The on-disk layout.** Roughly four megabytes per block and a nested directory
+path were both discussed as the shape. Neither is decided, and the reclaim
+argument — many small units droppable whole rather than one file to rewrite —
+constrains it more than the numbers do.
+
+**Interning is the fourth, and it is the largest saving available.** Every datom
+carries an entity and an attribute, and a segment repeats the same handful of
+attribute names across every datom it holds. A per-segment dictionary mapping
+those to small integers shrinks the data before any codec runs, and a general
+compressor recovers only part of it. It is deferred rather than dismissed
+because a dictionary is state that the block-is-self-describing rule reaches:
+either the dictionary lives in the segment header — making a block readable only
+in the context of its segment, which weakens the property deliberately and
+knowingly — or it is duplicated per block, which costs most of the saving. That
+trade is a decision, not an optimisation.
+
+⚠ One trap is already visible: whatever names a segment file must not encode
+anything a reader needs in order to interpret it. The whole record rests on a
+block being readable from its own bytes, and a filename is not part of the
+block. A layout that puts the codec, the tenant or the version in the path
+recreates exactly the configuration dependency this format refuses.
+
+### §13 — It is undecided whether one compression block may mix subjects
+
+**Source:** ADR-005, raised during implementation of T2.
+
+A codec finds redundancy across whatever is inside one block, so packing many
+subjects together compresses better — often much better, since datoms for
+different subjects share attribute names and value shapes. Three things push the
+other way, and none of them is a tuning question.
+
+**Reclaim.** Space is reclaimed by dropping a block whole. A block holding one
+subject is droppable when that subject is gone; a block holding a thousand is
+droppable when all thousand are, which in practice is never.
+
+**Erasure.** ADR-007 will encrypt per subject. A block that mixes subjects is
+either encrypted under one key — which makes crypto-shredding one subject
+impossible without rewriting everything sharing its block — or is not a single
+ciphertext at all, which changes what a block is.
+
+**Read amplification.** Fetching one subject decompresses the whole block.
+
+The answer is likely "a block holds one subject's datoms, and a segment holds
+many blocks", paying compression ratio for the other three. It is written down
+rather than assumed because the format permits either and the cost of learning
+it late is a rewrite of every stored byte.
+
 ## Closed
 
 Entries move here when the deferral is honoured, naming the record that closed it.
