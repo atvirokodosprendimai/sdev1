@@ -53,6 +53,19 @@ const (
 	// reports it rather than answering it — the candidate responses differ
 	// sharply and choosing between them needs a cluster to observe.
 	KindFleetWithdrawn Kind = "admit.fleet-withdrawn"
+
+	// KindLeafBelowFloor: a leaf has held fewer distinct failure domains than
+	// its policy requires, for longer than the declared grace.
+	//
+	// ⚠ DISTINCT from KindWriteRefusedBelowFloor, which is about a refused
+	// WRITE. A leaf can be short of copies with nobody writing to it at all, and
+	// conflating the two would make a quiet shortfall invisible — the leaves
+	// nobody is writing to are exactly the ones nobody is watching.
+	//
+	// ★ The grace is the whole discriminator (ADR-040): instantaneously a
+	// rolling restart and a genuine shortfall are the same observation, so only
+	// how long it lasts can separate them.
+	KindLeafBelowFloor Kind = "durability.leaf-below-floor"
 )
 
 func init() {
@@ -96,6 +109,11 @@ func init() {
 			Kind:   KindFleetWithdrawn,
 			Reader: "console: load panel — the group with nowhere left to route, and its obligation",
 			Fields: []string{"group", "replicas", "withdrawn"},
+		},
+		{
+			Kind:   KindLeafBelowFloor,
+			Reader: "console: durability panel — leaves short of copies, oldest first, and their obligations",
+			Fields: []string{"leaf", "domains", "required", "grace"},
 		},
 	} {
 		if err := Register(d); err != nil {

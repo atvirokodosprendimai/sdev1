@@ -61,6 +61,33 @@
 // difference. That is a limit of the approach rather than of this
 // implementation, and it is stated rather than mitigated.
 //
-// The decision this package implements is recorded in
-// docs/adr/ADR-004-durability-policy.md.
+// # A restart and a shortfall differ only in how long they last
+//
+// Refusing the write is half an answer: the leaf is still readable, still
+// degraded, and still degrading. [Watchdog] decides what the other half is
+// (ADR-040).
+//
+// ★ The hard question is telling "briefly degraded during a restart" from
+// "genuinely short of copies", and it answers itself once stated precisely: those
+// two do not merely LOOK alike, instantaneously they ARE the same observation. A
+// leaf holding two of three racks is holding two of three, whatever the reason.
+// No richer measurement separates them, because the difference is entirely in
+// what happens next.
+//
+// ⚠ So the discriminator can only be TIME, and the threshold is DECLARED. A
+// heuristic on the shape of the loss — which domains went, how many at once —
+// would be inventing a signal that is not in the observation.
+//
+// ⚠ And the grace withholds the OBLIGATION, never the STATUS. An operator
+// watching a rolling restart wants to see the dip and its recovery; they simply
+// do not want to be answerable for it. "Suppress for N seconds" conflates those
+// and turns the grace into a window where a real shortfall is invisible.
+//
+// ⚠ Nothing here takes a leaf out of service, and nothing here can. A below-floor
+// leaf is degraded, not wrong: evicting it would trade a durability risk for a
+// certain outage, and would remove exactly the copies that still exist.
+//
+// The decisions this package implements are recorded in
+// docs/adr/ADR-004-durability-policy.md and
+// docs/adr/ADR-040-below-the-floor.md.
 package durability
