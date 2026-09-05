@@ -366,8 +366,13 @@ func TestMapDeclaresNoObjectLocations(t *testing.T) {
 // it declares, with every level label and name preserved.
 func TestLoadFixtureRoundTrips(t *testing.T) {
 	m := loadFixture(t)
-	if m.Version != FormatVersion {
-		t.Errorf("Version = %d, want %d", m.Version, FormatVersion)
+	// The shipped fixture is the one `cmd/sdev1-addr` places against, so it
+	// carries a generation and must report itself placeable.
+	if !m.Placeable() {
+		t.Error("the shipped fixture carries no generation, so nothing can place against it")
+	}
+	if m.FormatVersion != FormatVersion {
+		t.Errorf("Version = %d, want %d", m.FormatVersion, FormatVersion)
 	}
 	if m.Depth != 1 {
 		t.Errorf("Depth = %d, want 1", m.Depth)

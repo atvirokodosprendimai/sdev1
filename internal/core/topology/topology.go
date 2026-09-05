@@ -3,6 +3,8 @@ package topology
 import (
 	"errors"
 	"fmt"
+
+	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
 )
 
 // FormatVersion is the map format this build understands. A map declaring any
@@ -57,10 +59,14 @@ type AuthoredNode struct {
 
 // authoredMap is the on-disk shape of a whole map.
 type authoredMap struct {
-	Version int          `json:"version"`
-	Depth   uint8        `json:"depth"`
-	Levels  []string     `json:"levels"`
-	Root    AuthoredNode `json:"root"`
+	Version int      `json:"version"`
+	Depth   uint8    `json:"depth"`
+	Levels  []string `json:"levels"`
+	// Generation is the hex of an encoded transaction identifier, and it is
+	// OPTIONAL: a map may be read to inspect a cluster's shape without ever
+	// placing anything. A map that places needs one, and placement refuses.
+	Generation string       `json:"generation,omitempty"`
+	Root       AuthoredNode `json:"root"`
 }
 
 // Node is the resident form of a node: a name, the index of its level, and the
@@ -88,10 +94,29 @@ func (n Node) Contains(other Node) bool {
 // binary-searchable and cheap to hand to a client. The map declares shape only
 // and never the location of an individual key, object or segment.
 type Map struct {
-	Version int
-	Depth   uint8
-	Levels  []string
-	Nodes   []Node
+	// FormatVersion is the version of the FILE FORMAT this map was read from.
+	//
+	// ⚠ It was called Version, and the rename is the substance of a decision
+	// rather than tidying. A field called Version sitting on a map is what
+	// somebody reaches for when they need to say WHICH MAP this is — and this one
+	// is a constant, so every map would claim the same identity forever with
+	// nothing failing. That is [Map.Generation]'s job.
+	FormatVersion int
+
+	// Generation says WHICH MAP this is, as a transaction identifier.
+	//
+	// ★ A tx.TxID because ADR-002's identifier is the only total order in this
+	// system: a counter would be a second clock, and a content hash does not
+	// order at all, so "which map came first" would be unanswerable.
+	//
+	// ⚠ It is AUTHORED, never assigned at load — one minted at load gives the
+	// same file a different identity in every process. The zero value means the
+	// map carries none, and [Map.Placeable] is how that is asked.
+	Generation tx.TxID
+
+	Depth  uint8
+	Levels []string
+	Nodes  []Node
 
 	byName  map[string]int
 	byLevel [][]int
