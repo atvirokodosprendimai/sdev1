@@ -74,6 +74,23 @@ func main() {
 				Usage: "largest frame accepted or sent, in bytes",
 				Value: wire.MaxFrame,
 			},
+			&cli.StringFlag{
+				Name:     "cert",
+				Usage:    "this node's certificate, in PEM",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "key",
+				Usage:    "this node's private key, in PEM",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name: "ca",
+				Usage: "the certificate authority that signs this cluster's certificates. " +
+					"⚠ Declared, never the host's trust store — nil there means every public CA " +
+					"on the machine may mint a peer",
+				Required: true,
+			},
 		},
 		Action: run,
 	}
@@ -108,6 +125,11 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		ReadTimeout:  cmd.Duration("read-timeout"),
 		WriteTimeout: cmd.Duration("write-timeout"),
 		MaxFrame:     int(cmd.Int("max-frame")),
+		TLS: serve.TLSConfig{
+			CertFile: cmd.String("cert"),
+			KeyFile:  cmd.String("key"),
+			CAFile:   cmd.String("ca"),
+		},
 	})
 	if err != nil {
 		return err

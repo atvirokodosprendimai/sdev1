@@ -1,6 +1,8 @@
 package serve
 
 import (
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -64,13 +66,25 @@ type ClientOptions struct {
 
 	// MaxFrame bounds a frame in either direction. See [wire.MaxFrame].
 	MaxFrame int
+
+	// TLS is how this caller proves who it is and checks the node it reached.
+	//
+	// ★ The certificate's Common Name is the PRINCIPAL a node reads the grant
+	// set for, so this is not merely confidentiality — it is the caller's
+	// identity, and there is no other way to supply one.
+	TLS TLSConfig
 }
 
+// Client is one caller's view of a cluster: a route cache and a socket.
 // Client is one caller's view of a cluster: a route cache and a socket.
 type Client struct {
 	cache  *routing.Cache
 	budget int
 	opts   ClientOptions
+	// tls is built once at construction rather than per dial, because a pool of
+	// certificates and a parsed key pair are the expensive parts and neither
+	// varies per connection.
+	tls *tls.Config
 }
 
 // NewClient seeds a cache and validates the options.
@@ -83,6 +97,10 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		return nil, fmt.Errorf("%w: dial %v, read %v, write %v, frame %d",
 			ErrNoTimeout, opts.DialTimeout, opts.ReadTimeout, opts.WriteTimeout, opts.MaxFrame)
 	}
+	config, err := opts.TLS.Client()
+	if err != nil {
+		return nil, err
+	}
 	cache, err := routing.NewCache(opts.Seed)
 	if err != nil {
 		return nil, fmt.Errorf("serve: seeding the route cache: %w", err)
@@ -91,7 +109,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	if budget < 1 {
 		budget = routing.DefaultHopBudget
 	}
-	return &Client{cache: cache, budget: budget, opts: opts}, nil
+	return &Client{cache: cache, budget: budget, opts: opts, tls: config}, nil
 }
 
 // Route is what the client currently believes about a key, which is how a caller
@@ -205,7 +223,17 @@ func (e *exchange) Serve(node string, k addr.Key) (routing.Redirect, bool) {
 func (e *exchange) roundTrip(node string, k addr.Key) (wire.Response, error) {
 	opts := e.client.opts
 
-	conn, err := net.DialTimeout("tcp", node, opts.DialTimeout)
+	// ⚠ A TLS dialler, so the handshake is inside the dial timeout. Dialling in
+	// the clear and upgrading afterwards would leave the handshake unbounded,
+	// which is a stranger holding a goroutine again by a different route.
+	dialer := &tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: opts.DialTimeout},
+		Config:    e.client.tls,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), opts.DialTimeout)
+	defer cancel()
+
+	conn, err := dialer.DialContext(ctx, "tcp", node)
 	if err != nil {
 		return nil, fmt.Errorf("dialling: %w", err)
 	}

@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -75,6 +76,12 @@ type Options struct {
 	// MaxFrame bounds a frame in either direction. See [wire.MaxFrame] for a
 	// value an operator may adopt.
 	MaxFrame int
+
+	// TLS is how this node proves who it is and checks who is calling.
+	//
+	// ⚠ Required. There is no unencrypted mode, because a transport that can be
+	// configured without one has a state in which it silently is not.
+	TLS TLSConfig
 }
 
 // Server answers one request per connection.
@@ -113,11 +120,37 @@ func NewServer(opts Options) (*Server, error) {
 		return nil, errors.New("serve: a node must be given a routing table")
 	}
 
-	l, err := net.Listen("tcp", opts.Addr)
+	config, err := opts.TLS.Server()
+	if err != nil {
+		return nil, err
+	}
+
+	// ★ The listener is WRAPPED, so there is no accept path that skips the
+	// handshake. A server that dropped to plaintext under some condition would
+	// have that condition as its weakest point; there is no such condition.
+	l, err := tls.Listen("tcp", opts.Addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("serve: listening on %q: %w", opts.Addr, err)
 	}
 	return &Server{opts: opts, listener: l, closing: make(chan struct{})}, nil
+}
+
+// principalOf completes the handshake and reads who is calling.
+//
+// ⚠ The handshake is forced HERE rather than left to the first read. TLS 1.3
+// finishes lazily, so a connection that has not been read from yet has no
+// verified chain — and a principal taken from it would be empty for a caller
+// that is perfectly well authenticated.
+func (s *Server) principalOf(conn net.Conn) (string, error) {
+	secure, ok := conn.(*tls.Conn)
+	if !ok {
+		return "", fmt.Errorf("%w: the connection is not a TLS connection", ErrNoPrincipal)
+	}
+	if err := secure.Handshake(); err != nil {
+		return "", fmt.Errorf("serve: handshake: %w", err)
+	}
+	state := secure.ConnectionState()
+	return PrincipalOf(&state)
 }
 
 // Addr is where the server is actually listening, which is what a test needs
@@ -166,6 +199,17 @@ func (s *Server) handle(ctx context.Context, conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 
 	if err := conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout)); err != nil {
+		return
+	}
+
+	// ★ Who is calling, before anything is read from them. The handshake has
+	// already proved a chain to the declared authority — this is the second half
+	// of rule 1, that a verified chain naming NOBODY is refused rather than
+	// admitted as an anonymous caller.
+	//
+	// ⚠ Nothing is sent back, for the same reason a bad frame gets no reply: a
+	// peer that cannot name itself has not shown it speaks this protocol.
+	if _, err := s.principalOf(conn); err != nil {
 		return
 	}
 	payload, err := wire.ReadFrame(conn, s.opts.MaxFrame)

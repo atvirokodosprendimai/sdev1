@@ -2,6 +2,7 @@ package serve_test
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net"
 	"strings"
@@ -51,6 +52,14 @@ func elsewhere(leaf addr.LeafID) addr.LeafID {
 // would not exercise the path an operator runs.
 func node(t *testing.T, holds addr.LeafID, table *routing.Table, seed ...ports.Datom) string {
 	t.Helper()
+	return nodeWithTLS(t, holds, table, sharedCA.issue(t, "node"), seed...)
+}
+
+// nodeWithTLS is node with the certificate named, for the tests that are ABOUT
+// the certificate.
+func nodeWithTLS(t *testing.T, holds addr.LeafID, table *routing.Table,
+	conf serve.TLSConfig, seed ...ports.Datom) string {
+	t.Helper()
 
 	store, err := leafstore.Open(t.TempDir(), holds)
 	if err != nil {
@@ -76,6 +85,7 @@ func node(t *testing.T, holds addr.LeafID, table *routing.Table, seed ...ports.D
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 		MaxFrame:     wire.MaxFrame,
+		TLS:          conf,
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
@@ -90,10 +100,18 @@ func node(t *testing.T, holds addr.LeafID, table *routing.Table, seed ...ports.D
 
 // ask runs one exchange the way ADR-045 says a connection is used: dial, one
 // framed request, one framed response, close.
+//
+// ⚠ It dials with TLS and a client certificate, because after ADR-046 there is
+// no other way in. It used to dial in the clear, and its conversion is part of
+// what shows no unauthenticated path was left behind.
 func ask(t *testing.T, address string, req wire.Request) wire.Response {
 	t.Helper()
 
-	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	config, err := sharedCA.issue(t, "test-reader").Client()
+	if err != nil {
+		t.Fatalf("building a client config: %v", err)
+	}
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", address, config)
 	if err != nil {
 		t.Fatalf("dial %s: %v", address, err)
 	}
@@ -289,6 +307,7 @@ func TestAServerNeedsDeclaredTimeouts(t *testing.T) {
 		ReadTimeout:  time.Second,
 		WriteTimeout: time.Second,
 		MaxFrame:     wire.MaxFrame,
+		TLS:          sharedCA.issue(t, "node"),
 	}
 
 	for _, c := range []struct {
