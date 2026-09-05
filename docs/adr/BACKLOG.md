@@ -102,9 +102,14 @@ happened. So `Clock.Merge` stays unbounded and `Admit` is the network path.
 tolerate different amounts, so ADR-042 requires a bound and deliberately invents
 none.
 
-⚠ **Also still open: nothing calls `Admit`** — there is no transport (§18) — and
-a PERSISTENTLY skewed node is not yet an obligation. One refusal is a transient;
-only a sustained one is somebody's problem, and that needs ADR-040's grace.
+⚠ **Also still open: nothing calls `Admit`.** ⚠ The stated reason for that has
+changed and the fact has not: a transport EXISTS now (§18, ADR-045), and
+`internal/core/serve` does not consult ADR-042's admission bound on the path where
+a request arrives. "There is no transport" was the reason until 2026-09-05; it is
+no longer available, which makes this a wiring job rather than a blocked one. A
+PERSISTENTLY skewed node is also not yet an obligation — one refusal is a
+transient; only a sustained one is somebody's problem, and that needs ADR-040's
+grace.
 
 Until the bound is chosen and wired, the cluster's timestamp quality is still set
 by its worst clock.
@@ -573,19 +578,36 @@ outlives its destruction, so a shredded subject stays readable on whichever node
 happened to hold it. Any cache needs an invalidation that is part of the shred
 rather than beside it, and "eventually" is not good enough for an erasure.
 
-### §18 — The response envelope is fixed; the transport and route distribution are open
+### §18 — The transport is built; what surrounds it is not
 
 **Source:** ADR-008 (`docs/adr/ADR-008-prefix-routing.md`), Out of Scope; and both
 its task files.
 
 ADR-008 decides what a route MEANS, how a lookup resolves one, and what a stale
-one does. It decides nothing about how bytes move between machines, which leaves
+one does. It decides nothing about how bytes move between machines, which left
 three questions and one whole missing layer.
 
-**The transport itself.** Framing, connection management, timeouts, and how a
-request identifies the leaf it is for. This is the single largest unbuilt piece
-of the system and several other records wait behind it — ADR-018's read-ahead,
-ADR-019's composed chaos suite, and anything that measures a degraded read (§16).
+**The transport itself.** ★ **ANSWERED by ADR-045**
+(`docs/adr/ADR-045-a-leaf-is-served-over-a-stream.md`). A leaf is served over a
+stream: `sdev1-serve` listens, `serve.Client` connects, and a stale client is
+redirected and repairs itself against a real socket. Framing, the request
+envelope, per-connection deadlines and a declared frame bound are all in
+`internal/core/wire` and `internal/core/serve`.
+
+★★ **The decision it turned on is one sentence: a request names the KEY, never
+the leaf.** Naming the leaf is the obvious design — the client resolved a route,
+so it is already holding one — and it would have destroyed rule 4 silently. A node
+that does not serve that leaf holds a name it cannot invert (a leaf is a prefix of
+a hash), so it can neither answer nor redirect, and a stale client stays wrong.
+The key makes the leaf computable AT THE RECEIVER, which is why the WRONG node is
+the one that repairs the caller's map.
+
+⚠ **What ADR-045 deliberately did NOT build, and each is still open below or
+elsewhere:** authentication (nothing authenticates — anyone who can reach the
+socket reads any leaf the node holds), TLS, connection pooling and multiplexing
+(§16), retry and backoff, and a networked `sdev1-ql` (the CLI still uses a local
+session). ⚠ The first of those is the one that gates exposure: this must not face
+a network the operator does not own until it is closed.
 
 ⚠ Whatever carries a redirect must make it structurally impossible to mistake
 for a successful answer. ADR-008 enforces that in Go's type system, and a wire
@@ -611,10 +633,11 @@ what you do not understand" is precisely how a payload smuggles itself into a
 redirect. A redirect also carries its route's EPOCH, without which ADR-008 rule 5's
 loop protection is gone while the redirect still looks correct.
 
-⚠ **Still open, and this is the bulk of it:** framing, connection management,
-timeouts, and what a REQUEST looks like. None of those carries a correctness
-property that is lost by waiting, which is why the envelope went first and they did
-not. `wire.Encode`/`Decode` have no caller.
+⚠ **What the envelope was waiting for has since landed.** The framing, the
+connection handling, the deadlines and the request shape are ADR-045's, and
+`wire.Encode`/`Decode` now have a caller on both sides of a socket. The envelope
+still went first for the reason given above: afterwards there are messages in
+flight, and it becomes a migration rather than a decision.
 
 **How a route reaches a node.** Gossip, a control plane, or something derived
 from the topology map — each has a different staleness profile, and ADR-008 is
@@ -717,9 +740,9 @@ its task files. ADR-010 also defers its purge escalation here.
 ADR-012 decides what a component may SAY and proves every declared thing has a
 reader. Four things sit past that.
 
-**Export.** Reaching an external metrics system means choosing a format, and
-choosing one before there is a transport (§18) or anything consuming the stream
-would be choosing on no information.
+**Export.** Reaching an external metrics system means choosing a format. ⚠ Half of
+this reason has expired: a transport exists (§18, ADR-045), so what is still
+missing is a consumer of the stream rather than a way to move bytes.
 
 **Sampling and aggregation.** A stream that emits per request cannot be kept in
 full at planetary scale, so windows and rates are needed. ⚠ Sampling interacts
@@ -766,8 +789,11 @@ process that has been up a month". A store exists now (§12), so closing this is
 real next step rather than a blocked one — and ADR-038 records the rejected
 "obligation as a datom" alternative to revisit alongside it.
 
-⚠ **Also still open: nothing reads the ledger.** There is no console and no
-transport (§18/§25). `Raise` is not yet called on a served path either.
+⚠ **Also still open: nothing reads the ledger.** ⚠ And the reason has narrowed:
+there is a transport now (§18, ADR-045), so what is missing is a console (§25) and
+a call site. `Raise` is still not called on a served path — but a served path now
+exists to call it from, which makes this a real next step rather than a blocked
+one.
 
 ### §22 — Which reads matter more is decided; the all-withdrawn response is open
 
@@ -1089,8 +1115,12 @@ records every datom through it, rehydrates on open, and `cmd/sdev1-ql --dir`
 writes to a leaf on a disk that outlives the process. A session opened WITHOUT one
 still holds datoms in memory, which is what the tests use.
 
-⚠ **Still open:** everything past one leaf. Nothing routes a write to the leaf
-that should hold it, and nothing replicates one — §18 and §19.
+⚠ **Still open:** everything past one leaf. ★ A read now crosses a network
+(§18, ADR-045) — a node serves the leaf it holds and redirects for one it does
+not — but a WRITE does not: `serve` refuses one by name, because there is no
+leader to fence it (ADR-009) and no durability tier to commit it at (ADR-020).
+Nothing routes a write to the leaf that should hold it, and nothing replicates
+one — §19.
 
 **Several attributes in one statement.** `ASSERT planet-7 mass = 1, radius = 2`
 does not parse. It stays inside ADR-003's one-entity boundary and is purely a
@@ -1139,8 +1169,10 @@ so a scan is a correct implementation and the index §27 will build is an
 optimisation that cannot change an answer.
 
 ⚠ **What is still open here** is the reach, not the meaning: a referrer is a
-separate entity and lands on its own leaf, so a cluster-wide inbound read needs
-the routing §18 defers. `leafstore.Store.Referrers` answers for ONE leaf.
+separate entity and lands on its own leaf, so a cluster-wide inbound read needs a
+scan that spans leaves. ⚠ The transport is no longer the gap (§18, ADR-045):
+`serve` reads ONE key from ONE node per exchange, and `leafstore.Store.Referrers`
+answers for ONE leaf. What is missing is a fan-out that knows which leaves to ask.
 
 **And what T1 could not prove.** The walk takes a `Resolver` and stores nothing,
 so nothing yet demonstrates that a real storage layer passes ONE snapshot rather

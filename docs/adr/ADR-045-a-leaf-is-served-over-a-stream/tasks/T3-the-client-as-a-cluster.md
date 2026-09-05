@@ -61,6 +61,10 @@ go test ./internal/core/serve/... -race -run 'TestAStaleClientIsRedirectedAndRep
 
 ## Mutation Log
 
+- 2026-09-05 · 1025f96* · mutant killed · exit 1 · `internal/core/serve/client.go` · Report not-served and DROP the route the node computed. Every layer still behaves: the node still redirected, the client still declined to answer, and routing.Resolve still refuses a route with no next hops — so the failure surfaces as an ordinary unresolved chain. What is destroyed is the repair itself, which travels only because the client carries the route back. If the falsifier survives this, nothing proves the wrong node is what fixes a stale client. · acceptance-sha256:865e6dc567f0907b83b600bdd0b4c05be106abecb0ccafe233055cb3317264da · covers:a stale client being repaired by the node it wrongly asked
+- 2026-09-05 · 1025f96* · mutant killed · exit 1 · `internal/core/serve/client.go` · Give the client its own redirect loop — re-enter Resolve one hop at a time until it lands. This is the change anyone would make to "be more robust", it reads as a retry rather than as a policy, and it works: the cache is repaired between attempts, so reads succeed. What it silently takes over is the hop budget. The caller declares one and the client no longer honours it, so a chain the operator bounded at one hop now runs eight — and nothing anywhere reports that the bound stopped applying. · acceptance-sha256:865e6dc567f0907b83b600bdd0b4c05be106abecb0ccafe233055cb3317264da · covers:redirect following being routing.Resolve's rather than the client's
+- 2026-09-05 · 1025f96* · mutant killed · exit 1 · `internal/core/serve/client.go` · Make the responding node authoritative: it just told us where the leaf is, so raise the epoch until the cache will take it. This is the most sympathetic-looking way to break ADR-008 rule 5 — it fixes a real annoyance (a redirect that is ignored) and every individual step reads as reasonable. It also makes the client the second implementation of the epoch rule, which is the thing T3 exists to prevent, and a stale node can now drag a client backwards with no error anywhere. · acceptance-sha256:865e6dc567f0907b83b600bdd0b4c05be106abecb0ccafe233055cb3317264da · covers:a client honouring the epoch rule it does not implement
+
 ## Invariants
 
 - The client implements `Serve` and borrows everything else.
@@ -88,3 +92,7 @@ that exists; a second policy in the transport would be invisible to it.
 - Authentication (deferred: `docs/adr/BACKLOG.md` §18)
 
 ## Verification Log
+- 2026-09-05 · 1025f96* · exit 0 · `set -o pipefail …` · acceptance-sha256:865e6dc567f0907b83b600bdd0b4c05be106abecb0ccafe233055cb3317264da · ms:4381
+- 2026-09-05 · 1025f96* · exit 0 · `set -o pipefail …` · acceptance-sha256:865e6dc567f0907b83b600bdd0b4c05be106abecb0ccafe233055cb3317264da · ms:4322
+- 2026-09-05 · 1025f96* · exit 0 · `set -o pipefail …` · acceptance-sha256:865e6dc567f0907b83b600bdd0b4c05be106abecb0ccafe233055cb3317264da · ms:4295
+- 2026-09-05 · 1025f96* · exit 0 · `set -o pipefail …` · acceptance-sha256:865e6dc567f0907b83b600bdd0b4c05be106abecb0ccafe233055cb3317264da · ms:4281
