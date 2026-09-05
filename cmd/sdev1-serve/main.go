@@ -22,6 +22,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/authz"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/leafstore"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/routing"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/serve"
@@ -91,6 +92,13 @@ func main() {
 					"on the machine may mint a peer",
 				Required: true,
 			},
+			&cli.StringFlag{
+				Name: "grants",
+				Usage: "directory holding the grant leaf — reserved tenant 0000, ADR-033. " +
+					"⚠ Required: a node that cannot read grants refuses every read, because " +
+					"an unreadable grant store is exactly when a system fails open",
+				Required: true,
+			},
 		},
 		Action: run,
 	}
@@ -117,10 +125,21 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer func() { _ = store.Close() }()
 
+	// ★ A SEPARATE store for the grant leaf, opened at the reserved tenant's own
+	// subtree. It is never reachable through a request — a key naming tenant
+	// 0000 is refused by name — so this reader serves the node's own decisions
+	// and nothing a caller can ask for.
+	grants, err := leafstore.Open(cmd.String("grants"), authz.SystemTenant.TenantSubtree())
+	if err != nil {
+		return fmt.Errorf("--grants: %w", err)
+	}
+	defer func() { _ = grants.Close() }()
+
 	srv, err := serve.NewServer(serve.Options{
 		Addr:         cmd.String("addr"),
 		Leaf:         leaf,
 		Store:        store,
+		Grants:       grants,
 		Table:        table,
 		ReadTimeout:  cmd.Duration("read-timeout"),
 		WriteTimeout: cmd.Duration("write-timeout"),

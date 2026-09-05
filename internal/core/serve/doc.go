@@ -123,9 +123,40 @@
 // mint their own authority instead — which gives a stronger test, because a
 // second, undeclared authority is what proves verification happens at all.
 //
+// # The grant set decides, and it is read at the PRESENT
+//
+// The tenant comes from `addr.TenantOf(request.Key)` — a prefix read, because
+// ADR-016 writes the tenant literally into the leading bytes of every key. The
+// principal comes from the certificate. The decision comes from
+// [github.com/atvirokodosprendimai/sdev1/internal/core/authz.Set.Allow], which
+// takes NO INSTANT.
+//
+// ★★ A request may ask `AS OF` any moment; the grant that permits it is always
+// today's. The request's own `Now` reaches the evaluator and never the decision.
+// ⚠ The symmetry is tempting — the data is historical, so why not the
+// permissions — and it is a leak: revoking access today would stop reaching a
+// query about last year, so the revocation would report success and change
+// nothing for anyone willing to ask about an earlier moment.
+//
+// ⚠ A node with no grant source REFUSES EVERY READ — [ErrNoGrants], at
+// construction. ADR-033 rule 5's dangerous reading is that an unconfigured or
+// unreachable grant store is a special case; it is exactly the case where a
+// system fails open, because the thing that would say no is what is missing.
+//
+// ⚠ Reserved tenant `0000` is refused BY NAME — [ErrSystemTenant] — before any
+// store is touched. The grants live there, so a node that happened to hold that
+// leaf would otherwise serve the whole grant table through the ordinary read
+// path. `Allow` refusing that tenant does not help: reading it is a read like any
+// other.
+//
+// ★ The grant source is LOCAL. Fetching it over this same transport would be
+// circular — that read would need authorizing, and the node it asked would need
+// to authorize it. Replicating the grant leaf between nodes is
+// docs/adr/BACKLOG.md §19's.
+//
 // # What is still missing
 //
-// ⚠ **An operator must run a CA.** This package consumes certificates and issues
+// ⚠ An operator must run a CA. This package consumes certificates and issues
 // none; distribution, rotation and revocation of an IDENTITY are
 // docs/adr/BACKLOG.md §18's. Revoking AUTHORITY works today and is a retraction.
 //

@@ -1,6 +1,7 @@
 package serve_test
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/tls"
@@ -17,8 +18,12 @@ import (
 	"time"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/authz"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/leafstore"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/routing"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/serve"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
 )
 
 // authority is a certificate authority and somewhere to write the files that
@@ -42,6 +47,13 @@ type authority struct {
 // DOES care mints its own, and that is how the second authority arrives.
 var sharedCA *authority
 
+// sharedGrants is the grant leaf every ordinary test's node reads.
+//
+// ★ It grants read on this package's tenant to the two principals the shared
+// helpers issue certificates for. A test that is ABOUT authorization builds its
+// own leaf instead, so that granting and revoking are its own to control.
+var sharedGrants *leafstore.Store
+
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "sdev1-ca")
 	if err != nil {
@@ -51,9 +63,58 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("serve_test: minting the shared CA: " + err.Error())
 	}
+	if sharedGrants, err = mintGrants(dir); err != nil {
+		panic("serve_test: seeding the shared grants: " + err.Error())
+	}
+
 	code := m.Run()
+	_ = sharedGrants.Close()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+// grantsDir writes a fresh grant leaf on disk and returns its directory, for the
+// binary test — which starts a separate PROCESS and so cannot share the
+// in-process store.
+func grantsDir(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	store, err := mintGrants(dir)
+	if err != nil {
+		t.Fatalf("seeding grants: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("closing the grant leaf: %v", err)
+	}
+	return filepath.Join(dir, "grants")
+}
+
+// mintGrants seeds a grant leaf permitting this package's ordinary principals to
+// read this package's tenant.
+func mintGrants(dir string) (*leafstore.Store, error) {
+	store, err := leafstore.Open(filepath.Join(dir, "grants"), authz.SystemTenant.TenantSubtree())
+	if err != nil {
+		return nil, fmt.Errorf("opening the grant leaf: %w", err)
+	}
+
+	ctx := context.Background()
+	var seq uint32
+	for _, principal := range []string{"test-reader", "reader-2", "node", "friend"} {
+		seq++
+		id := tx.TxID{HLC: hlc.Timestamp{Wall: 1}, Seq: seq}
+		d, err := authz.GrantDatom(principal, tenant(), authz.Read, id, 1)
+		if err != nil {
+			return nil, fmt.Errorf("granting %q: %w", principal, err)
+		}
+		if err := store.Append(ctx, d); err != nil {
+			return nil, fmt.Errorf("appending a grant for %q: %w", principal, err)
+		}
+	}
+	if err := store.Seal(ctx); err != nil {
+		return nil, fmt.Errorf("sealing the grant leaf: %w", err)
+	}
+	return store, nil
 }
 
 // newAuthority mints a self-signed CA into its own directory.
@@ -419,7 +480,7 @@ func TestDeclaredTLSIsRequired(t *testing.T) {
 		srv, err := serve.NewServer(serve.Options{
 			Addr: "127.0.0.1:0", Leaf: addr.LeafID{Depth: 1}, Store: emptyReader{},
 			Table: routing.NewTable(), ReadTimeout: time.Second, WriteTimeout: time.Second,
-			MaxFrame: 1 << 20, TLS: c.conf,
+			MaxFrame: 1 << 20, TLS: c.conf, Grants: sharedGrants,
 		})
 		if !errors.Is(err, serve.ErrNoTLS) {
 			if srv != nil {

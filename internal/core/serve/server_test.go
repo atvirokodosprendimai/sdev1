@@ -95,6 +95,7 @@ func serverWithTLS(t *testing.T, holds addr.LeafID, table *routing.Table,
 		WriteTimeout: 5 * time.Second,
 		MaxFrame:     wire.MaxFrame,
 		TLS:          conf,
+		Grants:       sharedGrants,
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
@@ -317,6 +318,7 @@ func TestAServerNeedsDeclaredTimeouts(t *testing.T) {
 		WriteTimeout: time.Second,
 		MaxFrame:     wire.MaxFrame,
 		TLS:          sharedCA.issue(t, "node"),
+		Grants:       sharedGrants,
 	}
 
 	for _, c := range []struct {

@@ -158,7 +158,21 @@ func (c *Client) Route(k addr.Key) (routing.Route, error) { return c.cache.Looku
 // own statement, so an answer arrives on the hop that resolved the key rather
 // than on one more.
 func (c *Client) Serve(node string, k addr.Key) (routing.Redirect, bool) {
-	return (&exchange{client: c, statement: probeStatement}).Serve(node, k)
+	return (&exchange{client: c, statement: probeStatement, now: c.instant()}).Serve(node, k)
+}
+
+// instant is the business moment a probe carries.
+//
+// ⚠ It must be a REAL instant. A probe sent with zero was harmless while nothing
+// authorized — and became a refusal for every caller the moment ADR-046 landed,
+// because the node reads the grant set at the instant it is given and no grant is
+// valid at the epoch. A bare `Serve` then reported every node as "served", since
+// a refusal means the node HELD the leaf.
+func (c *Client) instant() int64 {
+	if c.opts.Now != nil {
+		return c.opts.Now().Unix()
+	}
+	return time.Now().Unix()
 }
 
 // Read resolves a key and returns what the node holding it answered.

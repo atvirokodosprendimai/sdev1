@@ -117,7 +117,7 @@ func TestAFailedExchangeDiscardsItsConnection(t *testing.T) {
 	srv, err := serve.NewServer(serve.Options{
 		Addr: "127.0.0.1:0", Leaf: held, Store: store, Table: routing.NewTable(),
 		ReadTimeout: idleDrop, WriteTimeout: 5 * time.Second,
-		MaxFrame: wire.MaxFrame, TLS: sharedCA.issue(t, "node"),
+		MaxFrame: wire.MaxFrame, TLS: sharedCA.issue(t, "node"), Grants: sharedGrants,
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)

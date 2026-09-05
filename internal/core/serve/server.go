@@ -83,9 +83,30 @@ type Options struct {
 	// ⚠ Required. There is no unencrypted mode, because a transport that can be
 	// configured without one has a state in which it silently is not.
 	TLS TLSConfig
+
+	// Grants is where this node reads ADR-033's grant datoms — the reserved
+	// tenant `0000`, held locally.
+	//
+	// ⚠ Required, and a node without one serves NOTHING. ADR-033 rule 5's
+	// dangerous reading is that an unconfigured grant store is a special case;
+	// it is the case where a system fails open.
+	//
+	// ★ Local rather than fetched over this same transport, which would be
+	// circular: that read would itself need authorizing, and the node it asked
+	// would need to authorize it. Replicating the grant leaf is BACKLOG.md §19's.
+	Grants ports.Reader
+
+	// Now is this NODE's business clock, in Unix seconds, and it is what the
+	// grant set is loaded at.
+	//
+	// ⚠ Injectable only so a test can grant and revoke at chosen moments. It is
+	// never `wire.Request.Now`: that value is the caller's, and a caller who
+	// chose the moment it is judged at could outlive its own revocation by
+	// naming a second before it. Nil takes the wall clock.
+	Now func() int64
 }
 
-// Server answers one request per connection.
+// Server answers requests on the connections it accepts.
 type Server struct {
 	opts     Options
 	listener net.Listener
@@ -132,6 +153,9 @@ func NewServer(opts Options) (*Server, error) {
 	}
 	if opts.Table == nil {
 		return nil, errors.New("serve: a node must be given a routing table")
+	}
+	if opts.Grants == nil {
+		return nil, ErrNoGrants
 	}
 
 	config, err := opts.TLS.Server()
@@ -232,7 +256,8 @@ func (s *Server) handle(ctx context.Context, conn net.Conn) {
 	if err := conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout)); err != nil {
 		return
 	}
-	if _, err := s.principalOf(conn); err != nil {
+	principal, err := s.principalOf(conn)
+	if err != nil {
 		return
 	}
 
@@ -261,7 +286,7 @@ func (s *Server) handle(ctx context.Context, conn net.Conn) {
 			s.reply(conn, &wire.Refusal{Reason: fmt.Sprintf("serve: %v", err)})
 			return
 		}
-		if !s.reply(conn, s.answer(ctx, req)) {
+		if !s.reply(conn, s.answer(ctx, principal, req)) {
 			return
 		}
 	}
@@ -285,7 +310,18 @@ func (s *Server) reply(conn net.Conn, resp wire.Response) bool {
 // ★★ THE KEY IS DESCENDED AGAINST THIS NODE'S OWN LEAF. The caller's belief about
 // placement is not an input and is not even representable in a request — which is
 // exactly why a node that does not hold the key can still say where it went.
-func (s *Server) answer(ctx context.Context, req wire.Request) wire.Response {
+func (s *Server) answer(ctx context.Context, principal string, req wire.Request) wire.Response {
+	// ★★ AUTHORIZE FIRST, and against the PRESENT grant set. The request's own
+	// `Now` reaches the evaluator and never this decision — ADR-033 rule 3 is
+	// that a query `AS OF` last March is authorized by TODAY's grants, or else
+	// revoking access leaves the revoked party reading last year forever.
+	//
+	// ⚠ Before the redirect too, and deliberately: a node that redirected an
+	// unauthorized caller would confirm which node holds a tenant's leaf, which
+	// is a small leak but a free one to avoid.
+	if err := s.permits(ctx, principal, req.Key); err != nil {
+		return &wire.Refusal{Reason: err.Error()}
+	}
 	leaf, err := addr.Descend(req.Key, s.opts.Leaf.Depth)
 	if err != nil {
 		return &wire.Refusal{Reason: fmt.Sprintf("serve: descending the key: %v", err)}

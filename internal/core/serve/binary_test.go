@@ -122,9 +122,9 @@ func seeded(t *testing.T, leaf addr.LeafID) string {
 func start(t *testing.T, binary, dir string, leaf addr.LeafID, extra ...string) string {
 	t.Helper()
 
-	// ⚠ The certificate flags go through the BINARY's own parsing, which is the
-	// only place they are exercised — a test that built `serve.Options` directly
-	// would not notice a flag named wrongly in `main`.
+	// ⚠ The certificate and grant flags go through the BINARY's own parsing,
+	// which is the only place they are exercised — a test that built
+	// `serve.Options` directly would not notice a flag named wrongly in `main`.
 	conf := sharedCA.issue(t, "node")
 	args := append([]string{
 		"--dir=" + dir,
@@ -133,6 +133,7 @@ func start(t *testing.T, binary, dir string, leaf addr.LeafID, extra ...string) 
 		"--cert=" + conf.CertFile,
 		"--key=" + conf.KeyFile,
 		"--ca=" + conf.CAFile,
+		"--grants=" + grantsDir(t),
 	}, extra...)
 
 	cmd := exec.Command(binary, args...)

@@ -4,11 +4,19 @@
 **Covers:** none — no spec
 **Estimated scope:** M
 **Owner:** unassigned
-**Produces:** `serve.ErrNoGrants`, `serve.ErrSystemTenant`, `serve.Options.Grants`
+**Produces:** `serve.ErrNoGrants`, `serve.ErrSystemTenant`, `serve.ErrNotPermitted`, `serve.Options.Grants`, `serve.Options.Now`
 **Consumes:** `serve.PrincipalOf` (T1); `serve.Pool` (T2); `authz.Load`, `authz.Set.Allow`, `authz.Read`, `authz.SystemTenant`, `authz.GrantDatom`, `authz.RevokeDatom` from ADR-033; `addr.TenantOf` from ADR-016
 **Data dependency:** hermetic — a real grant leaf and a real data leaf, both in `t.TempDir()`
 **Proof map:** v1
 **Rests-on:** `a retraction reaching a caller whose certificate and connection are both still live`, `an unconfigured grant source refusing rather than permitting`, `the reserved system tenant being unreadable over the wire`
+
+⚠ **"The grant set is loaded at the NODE's clock" is deliberately NOT in that
+list, and the reason is worth more than a mutant.** `permits` takes no instant at
+all, so writing the caller-controlled version requires editing a second file to
+add the parameter back. A mutant is a single contiguous edit to one file, so this
+property has no mutant — because it is structurally unwritable rather than merely
+untested, which is the stronger of the two. The mutant that does run makes the
+node's clock LAG instead, which is the same leak with a plausible motive.
 
 ## Goal
 
@@ -32,7 +40,16 @@ lives in the grant set rather than anywhere the connection remembers.
 3. [S3] Refuse a request whose key names `authz.SystemTenant`, with `ErrSystemTenant`, BEFORE any store is touched. ⚠`Set.Allow` refusing that tenant does not cover this: reading the grant leaf is an ordinary read, so a node holding it would serve the grant table through the ordinary path. [proof: mutation]
 4. [S4] Authorize: `addr.TenantOf(req.Key)` for the tenant, `PrincipalOf` for the principal, `authz.Load(ctx, grants, principal, at)` then `Set.Allow(tenant, authz.Read)`. ★`Allow` takes no instant, so the request's `Now` reaches the evaluator and never the decision. [proof: mutation]
 5. [S5] Return a `wire.Refusal` naming the refusal. ⚠Not an empty answer — a caller reading zero rows would conclude it was permitted and the data was absent, which is a worse answer than "no". [proof: mutation]
-6. [S6] Add `--grants` to `cmd/sdev1-serve`, required, and update the two-process binary test to pass it. [proof: acceptance]
+6. [S6] ⚠**Load the grant set at the NODE's clock, never at `req.Now`.** The request's instant is chosen by the caller; if it selected which grant set is current, a principal revoked at T would need only to send `Now` a second before T — the retraction datom is not yet valid, the grant is still carried, and the read is authorized. `Options.Now` exists for this and is injectable only so a test can grant and revoke at chosen moments. [proof: mutation]
+7. [S7] Add `--grants` to `cmd/sdev1-serve`, required, and update the two-process binary test to pass it. [proof: acceptance]
+
+⚠ **THIS WAS WRITTEN WRONG FIRST AND EVERY TEST PASSED.** `permits` originally took
+`req.Now` and used it as the grant set's valid-time. The falsifier, the ungranted
+case, the system-tenant case and the past-query case all went green, because every
+client in the fixtures was honest about the clock. It was caught by re-reading this
+task's own Risks list against the implementation — not by any gate. ★ The
+distinction to keep: **a caller may choose which moment of the DATA to ask about,
+and may not choose which moment of the GRANTS it is judged by.**
 
 ## Acceptance
 
@@ -52,7 +69,7 @@ unchanged; if that record's own tests broke, the claim would be false.
 
 | Test name | File | Verifies | Covers | Steps |
 |-----------|------|----------|--------|-------|
-| `TestRevocationReachesALiveCertificate` | `internal/core/serve/authn_test.go` | **This ADR's falsifier.** A granted principal reads; the grant is retracted; the SAME client reads again **on the pooled connection** and is refused — certificate unchanged, connection never closed. ★ The pooled reuse is the whole test: a fresh dial would pass even if authority were established at handshake time, which is the design being ruled out | — | S4 |
+| `TestRevocationReachesALiveCertificate` | `internal/core/serve/authn_test.go` | **This ADR's falsifier.** A granted principal reads; the grant is retracted; the SAME client reads again **on the pooled connection** and is refused — certificate unchanged, connection never closed, and `Server.Accepted` unmoved so no handshake re-checked anything. ★ The pooled reuse is the whole test: a fresh dial would pass even if authority were established at handshake time, which is the design being ruled out. ⚠ It then reads AGAIN naming an instant before the revocation, which is the caller-controlled-clock hole — that assertion is what the first implementation failed | — | S4, S6 |
 | `TestAnUngrantedPrincipalIsRefused` | `internal/core/serve/authn_test.go` | A principal with a valid certificate and no grant gets a `wire.Refusal`, not an answer and not an empty one. ⚠ Asserted on the response SHAPE — an empty answer would read as "permitted, nothing matched" | — | S4, S5 |
 | `TestANodeWithoutGrantsRefusesEveryRead` | `internal/core/serve/authn_test.go` | `NewServer` without `Grants` is `ErrNoGrants`. ★ Refused at construction, so there is no running node in this state to test the request path of | — | S2 |
 | `TestTheSystemTenantIsNotReadableOverTheWire` | `internal/core/serve/authn_test.go` | A request whose key is in tenant `0000` is refused even against a node that HOLDS that leaf and whose caller is granted everything else. ⚠ The fixture must actually place the grant leaf on the serving node, or the test passes for the wrong reason — because the leaf was absent rather than because it was refused | — | S3 |
@@ -68,6 +85,10 @@ unchanged; if that record's own tests broke, the claim would be false.
 | 4 — it is used | `cmd/sdev1-serve --grants` is required, and the two-process binary test passes it. |
 
 ## Mutation Log
+
+- 2026-09-05 · 8223bf0* · mutant killed · exit 1 · `internal/core/serve/authn.go` · Read the grant set ten minutes in the past, "to allow for clock skew between this node and whoever wrote the grant". ★ It is a sympathetic change with a real motive — clocks do disagree, and a grant written a moment ago on another machine can look not-yet-valid here. What it silently buys is a ten-minute window in which every revocation has no effect: the retraction datom is not yet valid at the lagged instant, so the grant is still carried and the read is authorized. Nothing logs anything, and the revocation reports success. This is the same leak as letting the CALLER choose the instant, with the node making the mistake instead. · acceptance-sha256:d67a958ab961aa8a442f3f4dd85f47797c461db6f0f212f2ab4cace47d989c65 · covers:a retraction reaching a caller whose certificate and connection are both still live
+- 2026-09-05 · 8223bf0* · mutant killed · exit 1 · `internal/core/serve/server.go` · Fall back to the data store when no grant source was configured, rather than refusing. ★ It looks like graceful degradation and it starts cleanly — but the data leaf holds no grant datoms, so `authz.Load` returns an empty set and every read is refused... on a node that appears healthy, with no configuration error anywhere. And the moment a node happens to hold BOTH, whatever grant datoms sit in its data leaf become authoritative. ADR-033 rule 5"s dangerous reading is that an unconfigured grant store is a special case; it is the case where a system fails open. · acceptance-sha256:d67a958ab961aa8a442f3f4dd85f47797c461db6f0f212f2ab4cace47d989c65 · covers:an unconfigured grant source refusing rather than permitting
+- 2026-09-05 · 8223bf0* · mutant killed · exit 1 · `internal/core/serve/authn.go` · Drop the system-tenant refusal and let `Set.Allow` handle it — which it does, unconditionally, for the AUTHORIZATION question. ★ That is exactly why this reads as redundant and why removing it is the natural cleanup: two guards for one tenant, and the second one is in the package that owns the rule. What it misses is that reading the grant leaf is an ORDINARY READ. Allow refuses a grant NAMING tenant 0000; it says nothing about a request whose key IS in tenant 0000, and a node holding that leaf would then serve the whole grant table — every principal"s authority — down the ordinary read path. · acceptance-sha256:d67a958ab961aa8a442f3f4dd85f47797c461db6f0f212f2ab4cace47d989c65 · covers:the reserved system tenant being unreadable over the wire
 
 ## Invariants
 
@@ -99,3 +120,8 @@ to reach for it — wiring it would mean the refusal had been removed somewhere.
 - Measuring the per-request grant load (deferred: `docs/adr/BACKLOG.md` §16)
 
 ## Verification Log
+- 2026-09-05 · 8223bf0* · exit 0 · `set -o pipefail …` · acceptance-sha256:d67a958ab961aa8a442f3f4dd85f47797c461db6f0f212f2ab4cace47d989c65 · ms:7560
+- 2026-09-05 · 8223bf0* · exit 0 · `set -o pipefail …` · acceptance-sha256:d67a958ab961aa8a442f3f4dd85f47797c461db6f0f212f2ab4cace47d989c65 · ms:8274
+- 2026-09-05 · 8223bf0* · exit 0 · `set -o pipefail …` · acceptance-sha256:d67a958ab961aa8a442f3f4dd85f47797c461db6f0f212f2ab4cace47d989c65 · ms:8509
+- 2026-09-05 · 8223bf0* · exit 0 · `set -o pipefail …` · acceptance-sha256:d67a958ab961aa8a442f3f4dd85f47797c461db6f0f212f2ab4cace47d989c65 · ms:7732
+- 2026-09-05 · 8223bf0* · exit 0 · `set -o pipefail …` · acceptance-sha256:d67a958ab961aa8a442f3f4dd85f47797c461db6f0f212f2ab4cace47d989c65 · ms:7457

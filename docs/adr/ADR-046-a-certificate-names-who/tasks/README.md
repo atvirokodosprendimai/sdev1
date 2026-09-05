@@ -28,7 +28,7 @@ has to exist before the central claim can be tested at full strength.
 |----|-------|--------|--------|------------|
 | T1 | Both ends authenticate, and the certificate carries the principal | done | — | five TLS tests over two CAs, a `cmd/sdev1-serve` build, then three suites |
 | T2 | A connection is kept only while its stream position is known | done | — | four pool tests against a counting listener, then three suites |
-| T3 | The grant set decides, and it is read at the present | pending | — | five authorization tests including the falsifier, a build, then four suites |
+| T3 | The grant set decides, and it is read at the present | done | — | five authorization tests including the falsifier, a build, then four suites |
 
 Status: `pending` | `partial` | `blocked` | `done`.
 
