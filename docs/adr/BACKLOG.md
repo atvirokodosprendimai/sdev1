@@ -170,7 +170,7 @@ What a decision here must answer: who declares a server dead and after how long,
 which spare is chosen, whether the claim is automatic or authorised, whether the
 spare detaches on repair, and what happens when the spare pool is exhausted.
 
-### §8 — No real domain has been tested against the one-entity transaction boundary
+### §8 — Tested against a real registry and it held; a conserved-quantity domain is untested
 
 **Source:** ADR-003 (`docs/adr/ADR-003-transaction-boundary.md`), Out of Scope
 and its stated falsifier.
@@ -180,9 +180,58 @@ removes the need for distributed commit from the entire system. Its falsifier is
 correspondingly large: the decision fails if a legitimate domain operation cannot
 be expressed within one entity.
 
-Nothing has tested it. The refusal is implemented and proven to fire, but no real
-domain has been modelled against it, so the question of whether the boundary is
-liveable is open rather than answered.
+~~Nothing has tested it. The refusal is implemented and proven to fire, but no
+real domain has been modelled against it.~~ **Answered by ADR-044**
+(`docs/adr/ADR-044-the-boundary-against-a-real-domain.md`), against a corpus M
+supplied on 2026-09-05: 548,547 Lithuanian public-procurement legal entities
+(`juridiniai.jsonl`, 178 MB, git-ignored and never committed).
+
+★ **The corpus armed the falsifier in the registry's OWN vocabulary.** 277
+entities carry a `legalStatus` naming a legal act spanning several companies —
+`Reorganizuojamas` (139), `Dalyvaujantis reorganizavime` (74), `Dalyvaujantis
+atskyrime` (56), plus cross-border mergers and splits. ⚠ *Dalyvaujantis* means
+**participating**: a status whose entire content is "I am one party to an act
+involving others" is the domain stating that multi-entity operations are real
+here, in a word this project did not predict.
+
+★ **And the boundary HELD, because the ACT IS AN ENTITY.** A reorganisation has a
+date, a kind and participants, so registering it is one transaction on the act
+carrying references to the companies — no cross-entity write, no distributed
+commit. The cross-entity refusal is shown still firing in the same test, so the
+act fits the boundary rather than circumventing it.
+
+⚠ **It is only USABLE because of ADR-035's inbound read, and nobody planned
+that.** "Which companies are in reorganisation 7" is `READ ->name FROM [reorg-7]`.
+Before that record — built the same day for an unrelated reason — the normalised
+model was storable and unqueryable. **ADR-003's liveability rests on ADR-035**, a
+dependency nobody designed and therefore nobody is maintaining.
+
+⚠ **Where the registry denormalises**, putting the status on each participant,
+reproducing it takes two transactions. ★ Bitemporality pays for the missing
+atomicity: both facts carry the act's real-world date as `Valid.From`, so a reader
+on the VALID axis sees a consistent world however the writes interleaved. The
+tearing exists only on the transaction axis, which is the audit axis.
+
+★★ **The rule that generalises, and it is the durable output: bitemporality
+substitutes for cross-entity atomicity exactly when the operation is a statement
+about the WORLD — which has its own instant — rather than about the SYSTEM.** A
+reorganisation happened on a date; the write order is a fact about the database,
+not about Lithuania.
+
+⚠ **STILL OPEN, and this is where the boundary would genuinely fail: a domain
+with an invariant that must hold at every TRANSACTION instant** — a balance
+transfer, a double-entry ledger, a conserved sum. No real-world instant makes the
+intermediate state acceptable there. This registry conserves nothing; it records
+what happened. **One domain is one domain**, and ADR-044 answers §8 narrowly on
+purpose, naming the property a future domain must be checked for rather than
+declaring the boundary universally liveable.
+
+⚠ **A second finding the corpus produced, unrelated to the boundary:** every
+registry identifier is ALL-NUMERIC, and a bare numeric cannot be an entity name —
+it lexes as a number. ADR-021's backticks cover it (`` FROM `111756039` ``), but
+the guide presents quoting as being about KEYWORDS, and a domain whose primary
+keys are integers is entirely ordinary. Found by pointing the language at real
+data rather than by reading the grammar.
 
 What a decision here must answer: model at least one non-trivial domain against
 the boundary, and for any operation that resists it, decide between expressing it
