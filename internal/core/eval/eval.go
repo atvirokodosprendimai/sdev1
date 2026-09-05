@@ -42,11 +42,34 @@ var (
 )
 
 // Row is one attribute of one entity, as evaluated.
+//
+// ★ It carries BOTH temporal coordinates and the reference flag, because a row
+// is a projection of a datom and those three are the fields nothing can
+// reconstruct downstream. Two of them were absent until a row first left the
+// process (ADR-045) and nothing had noticed, because a local caller printing a
+// value never asks when the fact was true.
+//
+// ⚠ `Valid` is not decoration. [github.com/atvirokodosprendimai/sdev1/internal/core/datom.Encode]
+// writes both endpoints of every interval in full, precisely so a fact cannot
+// acquire an end at the epoch with nothing about it looking unusual — and a zero
+// interval is exactly that fact, fabricated.
+//
+// ⚠ `IsReference` is not decoration either. "planet-9" as a name and "planet-9"
+// as a link are the same nine bytes, and this field is the only thing that tells
+// them apart; a row that dropped it would turn every edge it carried into data.
+//
+// `Assert` needs no field: a projection contains only what an entity currently
+// carries, and a retracted attribute is absent rather than present-and-false.
 type Row struct {
 	Entity    string
 	Attribute string
 	Value     []byte
-	TxID      tx.TxID
+	// Valid is the business interval over which the fact holds.
+	Valid temporal.Interval
+	// TxID is the transaction that recorded it — the axis a caller cannot set.
+	TxID tx.TxID
+	// IsReference says the value names another entity rather than being data.
+	IsReference bool
 }
 
 // Read evaluates a READ against a reader, at one instant.
@@ -121,10 +144,12 @@ func readOne(ctx context.Context, r ports.Reader, sel *ql.Read,
 	for _, name := range names {
 		d := projected[name]
 		rows = append(rows, Row{
-			Entity:    d.Entity,
-			Attribute: d.Attribute,
-			Value:     d.Value,
-			TxID:      d.TxID,
+			Entity:      d.Entity,
+			Attribute:   d.Attribute,
+			Value:       d.Value,
+			Valid:       d.Valid,
+			TxID:        d.TxID,
+			IsReference: d.IsReference,
 		})
 	}
 	return rows, nil

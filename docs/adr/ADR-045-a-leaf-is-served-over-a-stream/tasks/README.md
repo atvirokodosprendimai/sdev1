@@ -22,7 +22,7 @@ listener.
 | ID | Title | Status | Covers | Acceptance |
 |----|-------|--------|--------|------------|
 | T1 | A request names a key, and a frame declares its bound | done | — | four codec/framing tests, then the wire, addr and routing suites |
-| T2 | A server that serves or redirects, and refuses a write by name | pending | — | four server tests over real sockets, a `cmd/sdev1-serve` build, then four suites |
+| T2 | A server that serves or redirects, and refuses a write by name | done | — | four server tests over real sockets, a `cmd/sdev1-serve` build, then four suites |
 | T3 | A client that is a routing.Cluster and nothing more | pending | — | three client tests against two real servers, then three suites |
 
 Status: `pending` | `partial` | `blocked` | `done`.

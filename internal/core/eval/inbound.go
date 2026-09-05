@@ -209,10 +209,12 @@ func rowsOf(members []member) []Row {
 		for _, name := range names {
 			d := m.projected[name]
 			rows = append(rows, Row{
-				Entity:    d.Entity,
-				Attribute: d.Attribute,
-				Value:     d.Value,
-				TxID:      d.TxID,
+				Entity:      d.Entity,
+				Attribute:   d.Attribute,
+				Value:       d.Value,
+				Valid:       d.Valid,
+				TxID:        d.TxID,
+				IsReference: d.IsReference,
 			})
 		}
 	}
