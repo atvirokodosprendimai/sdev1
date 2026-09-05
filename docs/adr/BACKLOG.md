@@ -522,15 +522,43 @@ to a consumer unless the two are reported separately, and conflating them turns
 different sink, and it should reuse that rather than growing a second retention
 notion.
 
-**Watching, which is the one that matters.** ADR-010 leaves a purge INCOMPLETE
+**Watching, which is the one that matters.** ~~ADR-010 leaves a purge INCOMPLETE
 when a sink has not acknowledged, and deliberately does not escalate — it defers
 that here. ADR-012 can now EXPRESS it as a declared event with a named reader.
-Nothing yet looks.
+Nothing yet looks.~~ **Answered by ADR-038**
+(`docs/adr/ADR-038-obligations.md`): `watch.Ledger` keeps what is outstanding, and
+`watch.FromPurge` turns an incomplete purge into an obligation naming the sinks
+ADR-010 already identified.
 
-⚠ That is exactly the failure ADR-012 is about, one level up: a declared thing
-whose reader exists on paper and never runs. Whatever closes this must make the
-watching real rather than declaring a watcher, and the honest test is whether an
-incomplete purge from a month ago would actually reach a person.
+★ **The test above ruled out the obvious design, which is the finding.** A watcher
+over the event stream fails three ways: the stream DROPS by design (ADR-012), so
+it loses the events that matter under the load that produces them; a stream does
+not persist, so a month-old event is gone; and it would need retention, which is
+the trap below. So an incomplete purge is a STATE rather than an event — the event
+announces it, the obligation survives it, and only an acknowledgement clears it.
+
+⚠ **THE TRAP THIS SECTION WALKS TOWARD while being right about something else.**
+The retention bullet above says reuse ADR-010's `Horizon` rather than growing a
+second notion — correct, for the LOG. Applied to the OBLIGATION it inverts what
+age means: a thirty-one-day-old incomplete purge stops being reported under a
+thirty-day horizon, and the system answers "nothing is outstanding" precisely
+BECAUSE the problem got old. `watch.Ledger.Outstanding` therefore takes no horizon
+at all — the signature is the enforcement.
+
+★ ADR-038 rule 5 also settles this section's SAMPLING warning for obligations,
+structurally rather than by argument: an obligation is raised by the emitter and
+never travels on the stream, so no drop or sample policy can lose one. The
+stream's own sampling is untouched and still needs the separate counts named
+above.
+
+⚠ **STILL OPEN: the ledger is in memory, so a restart loses it.** The honest
+reading of the test today is "a month-old obligation reaches a person, in a
+process that has been up a month". A store exists now (§12), so closing this is a
+real next step rather than a blocked one — and ADR-038 records the rejected
+"obligation as a datom" alternative to revisit alongside it.
+
+⚠ **Also still open: nothing reads the ledger.** There is no console and no
+transport (§18/§25). `Raise` is not yet called on a served path either.
 
 ### §22 — Nothing decides what happens when every replica sheds, or which reads matter more
 
