@@ -297,6 +297,56 @@ func (s *Store) Load(_ context.Context, entity string, at ports.Snapshot) ([]por
 	return out, nil
 }
 
+// Referrers returns the entities in this leaf carrying a reference to target,
+// visible at a snapshot. It implements [ports.Inbound].
+//
+// ⚠ It is a SCAN, and that is the honest implementation rather than a placeholder
+// for one: ADR-035 defines membership as a property of the datoms, so an index
+// would be an optimisation that cannot change this answer. Adding one is a
+// performance change, not a correctness one.
+//
+// ⚠ It answers for THIS LEAF. A referrer is a separate entity, so its own key
+// puts it wherever the trie puts it — a complete cluster-wide answer needs the
+// routing docs/adr/BACKLOG.md §18 defers, and this does not pretend otherwise.
+//
+// The result is a candidate list. The caller confirms it, because a leaf sealed
+// before a retraction and one sealed after it are both consulted here.
+func (s *Store) Referrers(_ context.Context, target string, at ports.Snapshot) ([]string, error) {
+	q, err := query(at)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, ErrClosed
+	}
+
+	entities, err := s.entitiesLocked()
+	if err != nil {
+		return nil, err
+	}
+
+	var out []string
+	for _, entity := range entities {
+		all, err := s.historyLocked(entity)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range all {
+			if !d.IsReference || string(d.Value) != target {
+				continue
+			}
+			if temporal.Visible(d.Valid.From, d.Valid.To, d.TxID, q) {
+				out = append(out, entity)
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // Attributes returns the attribute names an entity CARRIES at a snapshot.
 //
 // ⚠ The present shape, not the history: an attribute whose latest visible datom

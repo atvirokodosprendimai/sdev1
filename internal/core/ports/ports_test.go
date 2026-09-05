@@ -55,6 +55,44 @@ func TestReaderHasNoWriteMethod(t *testing.T) {
 	}
 }
 
+// TestInboundIsSeparateFromReader checks the scan capability stays its own port.
+//
+// ★ ADR-035 rule 7. `Reader` is entity-addressed — `Load` answers about an
+// identifier the caller already holds — and "what points at this" is a scan.
+// ⚠ Folding `Referrers` into `Reader` would make EVERY implementation claim it,
+// including a future routed remote reader that can serve one entity and cannot
+// scan a leaf. The separation is what lets a reader be honest about which of the
+// two it can do, and it is checked here because merging them is a one-line change
+// that would otherwise be a review miss.
+func TestInboundIsSeparateFromReader(t *testing.T) {
+	reader, inbound, writer := iface[Reader](), iface[Inbound](), iface[Writer]()
+
+	if inbound.NumMethod() == 0 {
+		t.Fatal("Inbound has no methods; every assertion here would pass vacuously")
+	}
+	if reader.Implements(inbound) {
+		t.Error("Reader satisfies Inbound, so every reader now claims it can scan for " +
+			"referrers — including ones that can only serve a single entity")
+	}
+	if inbound.Implements(reader) {
+		t.Error("Inbound satisfies Reader, so asking for a scan also demands entity reads; " +
+			"the two capabilities must be requestable separately")
+	}
+
+	// It is a READ capability, so the same rule that guards Reader guards it.
+	if inbound.Implements(writer) {
+		t.Error("Inbound implements Writer")
+	}
+	for i := 0; i < inbound.NumMethod(); i++ {
+		name := inbound.Method(i).Name
+		for _, verb := range mutatingVerbs {
+			if strings.HasPrefix(name, verb) {
+				t.Errorf("Inbound has method %q, which begins with the mutating verb %q", name, verb)
+			}
+		}
+	}
+}
+
 // TestStoreSatisfiesBothHalves checks Store is exactly Reader plus Writer, so
 // the write path is handed one thing rather than assembling two by hand.
 func TestStoreSatisfiesBothHalves(t *testing.T) {

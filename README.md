@@ -401,6 +401,11 @@ READ mass, radius FROM planet-7
 READ name FROM planet-7 WHERE class = 'terrestrial'
 READ * FROM planet-7 WHERE mass >= -40.5
 
+-- Read a TABLE: the entities that point AT one. `->a` is a member's attribute.
+READ ->name FROM [staff]
+READ ->name, ->lastname FROM [staff] WHERE ->lastname = 'Adams'
+READ * FROM [staff] LIMIT 20 OFFSET 40 AS OF 1700000000
+
 -- Time travel. Two independent axes.
 READ * FROM planet-7 AS OF 1700000000                       -- valid time
 READ * FROM planet-7 TRANSACTION 1700000500                 -- transaction time

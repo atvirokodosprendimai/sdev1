@@ -55,8 +55,8 @@ type Row struct {
 // inside one statement is a query that spans two moments — which is the defect
 // ADR-023 fixed for traversal.
 //
-// It performs exactly one [ports.Reader.Load], for the entity the statement
-// names.
+// A read of one entity performs exactly one [ports.Reader.Load]. An inbound read
+// — `FROM [e]` — is [readInbound], and costs one scan plus one load per candidate.
 func Read(ctx context.Context, r ports.Reader, sel *ql.Read, now int64) ([]Row, error) {
 	// Resolved ONCE, here, by the one implementation of ADR-002 rule 6's table.
 	// Everything below uses this value and re-derives nothing.
@@ -66,8 +66,19 @@ func Read(ctx context.Context, r ports.Reader, sel *ql.Read, now int64) ([]Row, 
 	if !ok {
 		return nil, ErrUnboundInstant
 	}
+	at := ports.Snapshot{At: id, ValidAt: instant}
 
-	datoms, err := r.Load(ctx, sel.Entity, ports.Snapshot{At: id, ValidAt: instant})
+	if sel.Inbound {
+		return readInbound(ctx, r, sel, at, resolved)
+	}
+	return readOne(ctx, r, sel, at, resolved)
+}
+
+// readOne answers a read that names one entity.
+func readOne(ctx context.Context, r ports.Reader, sel *ql.Read,
+	at ports.Snapshot, resolved temporal.Query) ([]Row, error) {
+
+	datoms, err := r.Load(ctx, sel.Entity, at)
 	if err != nil {
 		return nil, fmt.Errorf("eval: reading %q: %w", sel.Entity, err)
 	}

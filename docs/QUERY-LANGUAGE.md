@@ -26,6 +26,7 @@ is enforced rather than claimed — see [Documentation coverage](#documentation-
 - [Statements](#statements)
 - [Reading an entity](#reading-an-entity)
 - [Filtering](#filtering)
+- [Reading a table: `FROM [entity]`](#reading-a-table-from-entity)
 - [Time travel](#time-travel)
 - [The defaults table](#the-defaults-table)
 - [Shape queries](#shape-queries)
@@ -134,6 +135,62 @@ one you meant would answer the wrong one some of the time.
 
 ⚠ **Exactly one predicate.** There is no `AND`, no `OR`, and no parentheses. See
 [what it deliberately cannot say](#what-it-deliberately-cannot-say).
+
+## Reading a table: `FROM [entity]`
+
+Every read above names **one** entity, which means already knowing its
+identifier. `FROM [e]` asks the other question: **which entities point AT `e`?**
+
+```sql
+READ ->name FROM [staff]
+READ ->name, ->lastname FROM [staff] WHERE ->lastname = 'Adams'
+READ * FROM [staff] LIMIT 20 OFFSET 40 AS OF 1700000000
+```
+
+An entity that N things point at **is a table**. Nothing new is stored to make
+one: `ASSERT alice member = ->staff` already put `alice` in `staff`'s set,
+because a reference is a datom like any other.
+
+★ This is the one bounded way to ask "what is there". "Every entity" is
+unbounded and needs routing nobody has built; "everything pointing at `staff`" is
+bounded because `staff` is addressable.
+
+**`->name` is a MEMBER's attribute.** Inside `FROM [e]` every attribute is
+written with the marker, and outside one none of them are:
+
+```sql
+READ name FROM [staff]              -- refused: write ->name
+READ ->name FROM staff              -- refused: write FROM [staff]
+```
+
+⚠ The two spellings are **not** synonyms. A bare `name` inside `FROM [staff]`
+would have to mean *`staff`'s own* `name` — a join, which is not implemented.
+Refusing it now is what lets a join be added later without changing what
+already-written statements mean.
+
+**A member missing anything the statement names is dropped.** Given
+`READ ->name FROM [staff] WHERE ->lastname = 'Adams'`, a member is returned only
+if it carries `name`, carries `lastname`, *and* the comparison holds. Missing
+either attribute drops the member entirely — it is not returned with a hole.
+
+⚠ This is deliberately the **opposite** of `OPTIONAL` in a
+[shape query](#shape-queries), where an unmatched leg keeps the row with an
+unbound binding. A shape query asks how much a subject *resembles* a pattern, so
+a partial match is an answer. A table read asks which members *satisfy* a
+condition, so it is not.
+
+**`LIMIT` and `OFFSET` page over members**, not over rows — `LIMIT 20` is twenty
+entities, however many attributes each contributes. Members are ordered by entity
+name, and the page is taken **after** the drop, so page sizes are predictable.
+
+⚠ **Paging is only coherent within one snapshot.** Across a moving present,
+members shift between pages; pin the read with `AS OF` or `TRANSACTION` if that
+matters. Paging is refused on a read of one entity, whose attributes are a shape
+rather than a sequence:
+
+```sql
+READ * FROM planet-7 LIMIT 5        -- refused: nothing to page
+```
 
 ## Time travel
 
@@ -478,13 +535,23 @@ reference   = "->" ident ;
 traverse    = "TRAVERSE" ident "DEPTH" number timeclause ;
               (* ONE clause for the whole walk; no per-hop qualifier exists *)
 
-read        = "READ" projection "FROM" ident
+read        = "READ" projection "FROM" source
               [ "WHERE" predicate ]
+              [ page ]
               timeclause ;
 
-projection  = "*" | ident { "," ident } ;
+source      = ident | "[" ident "]" ;
+              (* `e` is one entity; `[e]` is the entities that point AT it *)
 
-predicate   = ident operator value ;
+projection  = "*" | attribute { "," attribute } ;
+attribute   = ident | "->" ident ;
+              (* `->a` is a MEMBER's attribute and is required inside `[e]`;
+                 a bare `a` is required outside one. Mixing them is refused. *)
+
+page        = "LIMIT" number [ "OFFSET" number ] ;
+              (* only on an inbound read; over MEMBERS, after the drop *)
+
+predicate   = attribute operator value ;
 operator    = "=" | "==" | "!=" | "<" | ">" | "<=" | ">=" ;
 value       = number | string | ident ;
 
@@ -521,12 +588,12 @@ codec       = "none" | "identity" | "zstd" ;
 | string | `KindString` | `'single'` or `"double"` quoted; `Token.Text` excludes the quotes |
 | punctuation | `KindPunct` | Any other single rune, or one of the two-character operators `>=` `<=` `!=` `==` |
 
-**The twenty-six keywords**, all reserved:
+**The twenty-seven keywords**, all reserved:
 
 ```
 READ    FROM  WHERE  AS  OF  TRANSACTION  MATCH
 SHAPE   LIKE  REQUIRE  OPTIONAL  SIMILARITY  WITH  COMPRESSION
-SEARCH  IN  FACET  BY  LIMIT
+SEARCH  IN  FACET  BY  LIMIT  OFFSET
 ASSERT  RETRACT  VALID  TO
 TRAVERSE  DEPTH
 SELECT
@@ -601,14 +668,46 @@ case *ShapeQuery:
 ```go
 type Read struct {
 	Attributes []string   // the projection; EMPTY means every attribute
-	Entity     string     // what is being read
+	Entity     string     // what is being read, or whose referrers are
+	Inbound    bool       // the source was written `FROM [Entity]`
 	Where      *Predicate // nil when there was no WHERE
+	Page       Page       // the paging clause as written
 	Time       TimeClause // as WRITTEN, before defaults
 }
 ```
 
 ⚠ `Attributes` being empty is how `READ *` is represented. There is no separate
 "star" flag, so a consumer must treat empty as *all* rather than as *none*.
+
+★ `Entity` holds the identifier WITHOUT its brackets, and `Inbound` carries the
+difference. `FROM staff` and `FROM [staff]` address the same entity and ask
+different questions, so the name is stored once and the question is a flag.
+
+⚠ The `->` marker is grammar and never part of an attribute name: `->name`
+projects the attribute `name`. Storing the marker would make `->name` and `name`
+different attributes in the store, which is a data model invented by a parser.
+
+```go
+type Page struct {
+	Limit  int64 // the maximum number of MEMBERS returned
+	Offset int64 // how many surviving members to skip first
+	Has    bool  // whether a clause was written at all
+}
+```
+
+⚠ `Has` is why `LIMIT 0` and no clause at all are distinguishable. They are
+opposite requests — no rows, and all of them — so a `Page` without the flag would
+make the emptier one the default for every statement that omits the clause.
+
+```go
+var ErrJoinNotSupported error
+```
+
+Returned when an attribute's `->` marker disagrees with what `FROM` named. Inside
+`FROM [e]` every attribute belongs to a member and is written `->a`; a bare `a`
+would mean `e`'s own attribute, which is a join and is not implemented. ★ It is
+refused rather than accepted as a synonym so that a join can be added later
+without changing what already-written statements mean.
 
 ```go
 type Predicate struct {
@@ -798,6 +897,15 @@ func (b Binding) IsBound() bool
 func (b Binding) Value() (string, bool)
 func (b Binding) String() string   // `attr="value"` or `attr=<unbound>`
 ```
+
+An **inbound read** returns one group of rows per surviving member, members in
+entity-name order and each member's attributes sorted within it. `LIMIT` counts
+members, so a page of 20 members carrying three attributes each is 60 rows.
+
+⚠ A reader that cannot say what points at an entity **refuses** with
+`eval.ErrNoInboundIndex` rather than returning nothing. "Nothing points at this"
+and "I cannot tell you what points at this" are different answers, and returning
+the first for the second is the defect the evaluator exists to prevent.
 
 ```go
 type Row struct {

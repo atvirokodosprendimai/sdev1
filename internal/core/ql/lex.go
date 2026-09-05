@@ -68,6 +68,10 @@ var keywords = map[string]bool{
 
 	// Added for traversal.
 	"TRAVERSE": true, "DEPTH": true,
+
+	// Added for the inbound read's paging clause (ADR-035). LIMIT arrived with
+	// SEARCH and is reused rather than spelled twice.
+	"OFFSET": true,
 }
 
 // RefMarker precedes an entity name to say the value is a LINK rather than text.
