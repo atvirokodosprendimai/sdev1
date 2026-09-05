@@ -18,6 +18,13 @@
 # Test binary, built with `go test -c`
 *.test
 
+# Real-world corpora used to test a decision against a domain (BACKLOG.md §8).
+# They are large — juridiniai.jsonl is 178MB of Lithuanian public-procurement
+# legal entities — and they are somebody's crawl rather than this project's
+# source. A record that rests on one cites its shape, its size and its date;
+# never its bytes.
+*.jsonl
+
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
