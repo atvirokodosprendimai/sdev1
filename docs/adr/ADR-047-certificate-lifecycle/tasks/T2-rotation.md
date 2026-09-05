@@ -66,6 +66,10 @@ whichever one notices a changed file.
 
 ## Mutation Log
 
+- 2026-09-05 · 335f78a* · mutant killed · exit 1 · `internal/core/certs/source.go` · Serve the material captured at construction instead of re-reading it. ★ Every handshake still works, every chain still verifies, the pool is still exactly the declared authority, and all four fail-open defaults are still set — so every OTHER test in this package and in serve passes untouched. What is lost is invisible until it matters: a rotated certificate is never picked up, so the node quietly presents the old one until it expires and then stops serving. Only replacing a file under a RUNNING listener and asserting the new common name can see it. · acceptance-sha256:46020c1e7605c34e47010512ee5574950b2184ddff98d42bd07d90dd16aee7f1 · covers:replaced material being picked up without restarting the process
+- 2026-09-05 · 335f78a* · mutant killed · exit 1 · `internal/core/certs/source.go` · Return nothing when a reload fails, rather than the last good material — the shape "fail closed" takes when it is applied without asking what is actually in doubt. ⚠ It reviews as the SECURE choice, and it is the opposite: the file on disk is the thing that just failed to parse, while the material already in hand has been serving correctly for a month. A half-written scp then takes down every node that read it. The test that catches it is the one asserting a WORKING CONNECTION after corrupting the file; "a reload returned an error" would pass here untouched. · acceptance-sha256:46020c1e7605c34e47010512ee5574950b2184ddff98d42bd07d90dd16aee7f1 · covers:the last good material surviving a failed reload
+- 2026-09-05 · 335f78a* · mutant killed · exit 1 · `internal/core/certs/source.go` · Allow a month of grace past expiry, "so a node does not fall over the instant a renewal is late". ★ It is a sympathetic change with an operational motive, and the refusal, the sentinel and the message all still exist — so it reads as a tuning parameter rather than a removed check. What it does is install a certificate every PEER will reject: the node starts happily and every handshake then fails with an error naming the other machine, so whoever is paged spends the outage looking at the wrong host. A grace period here helps nobody, because the peers get no say in it. · acceptance-sha256:46020c1e7605c34e47010512ee5574950b2184ddff98d42bd07d90dd16aee7f1 · covers:an already-expired certificate being refused at load
+
 ## Invariants
 
 - Material is re-read per connection.
@@ -95,3 +99,7 @@ connection is already an event that arrives exactly when the material is needed.
 - A signal handler or watcher (permanent: boundary: ADR-047 rule 4 — the connection is the event)
 
 ## Verification Log
+- 2026-09-05 · 335f78a* · exit 0 · `set -o pipefail …` · acceptance-sha256:46020c1e7605c34e47010512ee5574950b2184ddff98d42bd07d90dd16aee7f1 · ms:6308
+- 2026-09-05 · 335f78a* · exit 0 · `set -o pipefail …` · acceptance-sha256:46020c1e7605c34e47010512ee5574950b2184ddff98d42bd07d90dd16aee7f1 · ms:6369
+- 2026-09-05 · 335f78a* · exit 0 · `set -o pipefail …` · acceptance-sha256:46020c1e7605c34e47010512ee5574950b2184ddff98d42bd07d90dd16aee7f1 · ms:6437
+- 2026-09-05 · 335f78a* · exit 0 · `set -o pipefail …` · acceptance-sha256:46020c1e7605c34e47010512ee5574950b2184ddff98d42bd07d90dd16aee7f1 · ms:6275

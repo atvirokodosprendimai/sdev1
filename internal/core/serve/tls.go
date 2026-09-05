@@ -2,10 +2,10 @@ package serve
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
-	"os"
+
+	"github.com/atvirokodosprendimai/sdev1/internal/core/certs"
 )
 
 var (
@@ -61,70 +61,55 @@ type TLSConfig struct {
 // reads as "verify client certificates", it passes a casual review, and a caller
 // that presents none is admitted.
 func (c TLSConfig) Server() (*tls.Config, error) {
-	certificate, pool, err := c.load()
+	source, err := c.Source()
 	if err != nil {
 		return nil, err
 	}
-	return &tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		ClientCAs:    pool,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		MinVersion:   tls.VersionTLS13,
-	}, nil
+	return source.Server(), nil
 }
 
 // Client builds the dialler's configuration.
 //
-// ⚠ `InsecureSkipVerify` is not set and nothing exposes it. See the package
-// comment: a test-only escape hatch is a production escape hatch with a comment
-// on it, and the tests here need none.
+// ⚠ It reads the material as it is NOW, so a caller that wants rotation must
+// call it per dial rather than once. [Client.dial] does. See
+// [github.com/atvirokodosprendimai/sdev1/internal/core/certs.Source.Client] for
+// why `RootCAs` leaves no other option.
+//
+// ⚠ `InsecureSkipVerify` is not set and nothing exposes it. A test-only escape
+// hatch is a production escape hatch with a comment on it, and the tests here
+// need none.
 func (c TLSConfig) Client() (*tls.Config, error) {
-	certificate, pool, err := c.load()
+	source, err := c.Source()
 	if err != nil {
 		return nil, err
 	}
-	return &tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		RootCAs:      pool,
-		MinVersion:   tls.VersionTLS13,
-	}, nil
+	return source.Client(), nil
 }
 
-// load reads this end's key pair and the declared authority.
-func (c TLSConfig) load() (tls.Certificate, *x509.CertPool, error) {
+// Source turns declared paths into material that re-reads itself.
+//
+// ★ ADR-047 moved the loading here. What ADR-046 did once at construction now
+// happens per connection, so rotating a certificate is replacing a file — and a
+// failed reload keeps the last good material rather than stopping the node.
+func (c TLSConfig) Source() (*certs.Source, error) {
 	if c.CertFile == "" || c.KeyFile == "" || c.CAFile == "" {
-		return tls.Certificate{}, nil, fmt.Errorf("%w: cert %q, key %q, ca %q",
+		return nil, fmt.Errorf("%w: cert %q, key %q, ca %q",
 			ErrNoTLS, c.CertFile, c.KeyFile, c.CAFile)
 	}
-
-	certificate, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+	source, err := certs.NewSource(certs.Material{
+		CertFile: c.CertFile, KeyFile: c.KeyFile, CAFile: c.CAFile,
+	})
 	if err != nil {
-		return tls.Certificate{}, nil, fmt.Errorf("serve: loading the key pair: %w", err)
+		// ⚠ ErrNoTLS stays the sentinel a caller matches on for "the material is
+		// unusable", so ADR-046's construction refusals keep their meaning. An
+		// expired certificate is reported as itself, because ErrExpired says
+		// something ErrNoTLS does not.
+		if errors.Is(err, certs.ErrExpired) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %v", ErrNoTLS, err)
 	}
-	pool, err := c.pool()
-	if err != nil {
-		return tls.Certificate{}, nil, err
-	}
-	return certificate, pool, nil
-}
-
-// pool reads the declared authority into a pool of exactly one thing.
-//
-// ★ It starts from [x509.NewCertPool] and never from [x509.SystemCertPool]. A
-// node's peers are its own cluster, so the set of authorities that may mint one
-// is a set the operator chose — and starting from the system store makes that set
-// "every CA trusted by this machine", which is not a decision anyone would write
-// down but is exactly what the convenient constructor gives.
-func (c TLSConfig) pool() (*x509.CertPool, error) {
-	pem, err := os.ReadFile(c.CAFile)
-	if err != nil {
-		return nil, fmt.Errorf("serve: reading the certificate authority: %w", err)
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(pem) {
-		return nil, fmt.Errorf("%w: %s holds no certificate", ErrNoTLS, c.CAFile)
-	}
-	return pool, nil
+	return source, nil
 }
 
 // PrincipalOf is the name the grant set is read for.

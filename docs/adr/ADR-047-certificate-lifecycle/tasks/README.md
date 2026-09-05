@@ -25,7 +25,7 @@ connection pool, which already exists.
 | ID | Title | Status | Covers | Acceptance |
 |----|-------|--------|--------|------------|
 | T1 | A command mints the authority and issues the certificates | done | — | four issuance tests, a `cmd/sdev1-ca` build, then two suites |
-| T2 | A replaced certificate is picked up without a restart | pending | — | four rotation tests over real listeners, then two suites |
+| T2 | A replaced certificate is picked up without a restart | done | — | four rotation tests over real listeners, then two suites |
 | T3 | A denied serial stops a certificate mid-connection | pending | — | four tests including the falsifier, a build, then three suites |
 
 Status: `pending` | `partial` | `blocked` | `done`.

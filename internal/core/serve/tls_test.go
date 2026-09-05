@@ -388,14 +388,42 @@ func TestThePrincipalIsTheCertificateSubject(t *testing.T) {
 // handshake proves nothing about them: a config with all four left alone still
 // completes a handshake happily, with anonymous callers and the host's root
 // store.
+// effective resolves the configuration a handshake will ACTUALLY use.
+//
+// ⚠ ADR-047 moved the certificate and the authority pool behind
+// `GetConfigForClient`, so that rotation reaches both. That means the outer
+// config legitimately has a nil `ClientCAs` and a zero `ClientAuth` — and those
+// are the exact values that mean "fail open" when there is no callback. Asserting
+// on the outer config would therefore have started passing for the wrong reason
+// the moment the callback was removed.
+//
+// ★ So the test asks the config what it would do, rather than what it holds.
+func effective(t *testing.T, c *tls.Config) *tls.Config {
+	t.Helper()
+
+	if c.GetConfigForClient == nil {
+		return c
+	}
+	got, err := c.GetConfigForClient(&tls.ClientHelloInfo{})
+	if err != nil {
+		t.Fatalf("GetConfigForClient: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetConfigForClient returned nil, so the outer config's zero values apply — " +
+			"which is anonymous callers and the host root store")
+	}
+	return got
+}
+
 func TestTheTLSConfigRefusesItsFailOpenDefaults(t *testing.T) {
 	ca := newAuthority(t, "cluster-ca")
 	conf := ca.issue(t, "node-a")
 
-	server, err := conf.Server()
+	built, err := conf.Server()
 	if err != nil {
 		t.Fatalf("Server: %v", err)
 	}
+	server := effective(t, built)
 	if server.ClientAuth != tls.RequireAndVerifyClientCert {
 		t.Errorf("ClientAuth = %v, want RequireAndVerifyClientCert.\n"+
 			"The zero is NoClientCert, and VerifyClientCertIfGiven is the spelling that "+
