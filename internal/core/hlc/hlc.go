@@ -135,8 +135,18 @@ func (c *Clock) Now() Timestamp {
 //
 // ⚠ It is also the path by which a badly-skewed remote clock propagates. A
 // remote wall reading far in the future is adopted and, being monotonic, is
-// never given back. Refusing such a remote is a cluster-level policy and is not
-// decided here.
+// never given back.
+//
+// ★ THIS IS THE UNBOUNDED PATH, AND IT IS THE RIGHT ONE FOR HISTORY READ BACK
+// FROM DURABLE STORAGE (ADR-042). A leaf written by a node whose clock was wrong
+// carries those timestamps forever; refusing them here would make committed data
+// unreadable, which converts a clock problem into data loss over skew that
+// already happened. [tx.Minter.Observe] rehydrates through this path.
+//
+// ⚠ For a timestamp arriving from another NODE, use [Clock.Admit], which checks
+// a declared bound BEFORE absorbing. The ordering is the whole point: this
+// function is irreversible, so a check performed after it reports damage rather
+// than preventing it.
 func (c *Clock) Merge(remote Timestamp) Timestamp {
 	c.mu.Lock()
 	defer c.mu.Unlock()

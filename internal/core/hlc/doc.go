@@ -43,6 +43,32 @@
 // can order on it without decoding. Comparing two encodings as bytes yields the
 // same order as [Timestamp.Compare].
 //
-// The decision this package implements is recorded in
-// docs/adr/ADR-002-transaction-identity.md.
+// # Two absorb paths, and the difference matters
+//
+// A remote timestamp reaches this clock two ways, and they are bounded
+// differently on purpose (ADR-042).
+//
+// ★ [Clock.Merge] is UNBOUNDED, and it is the right path for history read back
+// from durable storage. A leaf written by a node whose clock was wrong carries
+// those timestamps forever; refusing them would make committed data unreadable —
+// a clock problem converted into data loss, over skew that already happened.
+//
+// ⚠ [Clock.Admit] is BOUNDED, and it is the right path at a network boundary. It
+// checks a declared skew bound BEFORE merging, and a refusal leaves the clock
+// byte-identical. That ordering is the whole decision: merging is irreversible —
+// monotonicity is the property that forbids coming back — so a check performed
+// afterwards reports damage rather than preventing it.
+//
+// ⚠ Skew is measured BY THE RECEIVER, against its own wall reading, and never
+// self-reported: a node whose clock is wrong is exactly the node whose
+// self-assessment is wrong.
+//
+// ⚠ And the honest limit — this measures the DIFFERENCE between two clocks, not
+// either one's error. A receiver whose own clock is wrong refuses correct peers,
+// confidently. Two clocks can only establish that they disagree; saying which is
+// wrong needs a third party this system does not have.
+//
+// The decisions this package implements are recorded in
+// docs/adr/ADR-002-transaction-identity.md and
+// docs/adr/ADR-042-clock-skew-admission.md.
 package hlc

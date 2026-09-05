@@ -57,7 +57,7 @@ repair traffic can exceed client traffic, and nothing in the current design
 throttles or prioritises it. Local reconstruction codes are the known remedy and
 are not in scope for the first release.
 
-### §4 — Clock skew between nodes is unbounded and unpoliced
+### §4 — Skew is bounded and refused before absorption; the bound VALUE is open
 
 **Source:** ADR-002 (`docs/adr/ADR-002-transaction-identity.md`), Out of Scope.
 
@@ -66,12 +66,48 @@ the fastest clock it hears from. A node whose wall clock jumps hours ahead drags
 every timestamp it touches with it, permanently — the cluster cannot come back,
 because monotonicity is the property that forbids it.
 
-Nothing currently bounds this. What a decision here must answer: the maximum skew
-a node may exhibit before its messages are rejected, how that skew is measured
-without trusting the misbehaving node's own reading, and whether a node past the
-bound is refused, evicted, or merely alarmed.
+~~Nothing currently bounds this.~~ **Answered by ADR-042**
+(`docs/adr/ADR-042-clock-skew-admission.md`) — two of the three questions below,
+and the third in shape if not in value.
 
-Until it is decided, the cluster's timestamp quality is set by its worst clock.
+★ **The irreversibility named above is not context around the decision, it IS the
+decision.** If a skewed remote is adopted "permanently — the cluster cannot come
+back", then a check performed AFTER absorbing is not a check; it is a report of
+damage. So `Clock.Admit` checks first and leaves the clock byte-identical when it
+refuses, and the record's falsifier asserts the CLOCK rather than the error —
+merging and then returning an error looks identical from a caller's side.
+
+**How it is measured without trusting the misbehaving node.** By the RECEIVER,
+against its own wall reading. A node whose clock is wrong is exactly the node
+whose self-assessment is wrong. ⚠ And the honest limit is recorded rather than
+mitigated: this measures the DIFFERENCE between two clocks, not either one's
+error, so a receiver whose own clock is wrong refuses correct peers — confidently.
+Where one node is wrong that is right; where the majority is wrong it is exactly
+backwards, and nothing here can tell those apart.
+
+**Refused, evicted, or alarmed.** The MESSAGE is refused, the node is not evicted,
+and the refusal is observable (`observe.KindClockSkewRefused`). A skewed node is
+otherwise healthy — its data is correct and its storage is fine, only its
+timestamps are wrong — so refusing its messages already stops the spread, and
+evicting additionally loses a working replica over a clock.
+
+★ **And a distinction that would otherwise have been got wrong:** the bound
+applies to a timestamp arriving from another NODE, never to one read back from
+DURABLE STORAGE. `tx.Minter.Observe` rehydrates history from a leaf; bounding
+that path would make a leaf written by a formerly-skewed node permanently
+unreadable — a clock problem converted into data loss, over skew that already
+happened. So `Clock.Merge` stays unbounded and `Admit` is the network path.
+
+⚠ **Still open: THE MAXIMUM SKEW ITSELF.** A datacentre and a wide-area link
+tolerate different amounts, so ADR-042 requires a bound and deliberately invents
+none.
+
+⚠ **Also still open: nothing calls `Admit`** — there is no transport (§18) — and
+a PERSISTENTLY skewed node is not yet an obligation. One refusal is a transient;
+only a sustained one is somebody's problem, and that needs ADR-040's grace.
+
+Until the bound is chosen and wired, the cluster's timestamp quality is still set
+by its worst clock.
 
 ### §5 — Closed timestamps do not exist, so bounded-staleness reads cannot be offered
 
