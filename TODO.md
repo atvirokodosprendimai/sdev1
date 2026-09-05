@@ -52,12 +52,12 @@ this design hides.
 
 ### 2 · A query planner and a similarity metric · §20
 
-**Evaluation is done.** ADR-027 and `internal/core/eval` turn a `SELECT` into rows
+**Evaluation is done.** ADR-027 and `internal/core/eval` turn a `READ` into rows
 against any `ports.Reader`, so the same statement answers from memory or from a
 leaf and costs ONE entity read either way.
 
 ⚠ **It closed a live defect, and the defect is the lesson.** `WHERE` had parsed
-since ADR-011 and been evaluated nowhere: `SELECT * FROM planet-3 WHERE mass =
+since ADR-011 and been evaluated nowhere: `READ * FROM planet-3 WHERE mass =
 "999"` returned every attribute of planet-3, with no error and no way to tell.
 **A clause that parses and is silently discarded is worse than one that is
 refused** — "not implemented" is an answer a caller can act on.

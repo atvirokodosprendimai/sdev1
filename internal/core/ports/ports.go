@@ -42,7 +42,7 @@ type Datom struct {
 // latest datom per attribute, with retracted attributes absent entirely.
 //
 // ⚠ It lives here because three places need it — the evaluator projecting a
-// SELECT, a store answering what an entity's shape is, and search confirming a
+// READ, a store answering what an entity's shape is, and search confirming a
 // candidate — and a fourth will. Each copy has to get the same two things right:
 // LATEST by transaction, and a retraction SUPPRESSING its attribute rather than
 // being reported as a value. A copy that skipped the second returns a fact that

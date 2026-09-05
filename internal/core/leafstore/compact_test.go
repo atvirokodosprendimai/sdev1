@@ -141,7 +141,7 @@ func TestCompactionChangesNoAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	// ⚠ HISTORY, not a query. A SELECT resolves to the latest visible datom, so
+	// ⚠ HISTORY, not a query. A READ resolves to the latest visible datom, so
 	// dropping every superseded fact would leave queries answering identically
 	// while the past became unanswerable — which is what this store is for.
 	want := historyOf(t, before)

@@ -51,7 +51,7 @@
 //   - ASSERT and RETRACT append a datom, at a transaction the SESSION mints.
 //     ⚠ The instant never comes from the statement — the language makes that
 //     unsayable, and this is the layer that must not quietly reintroduce it.
-//   - SELECT filters datoms through the visibility predicate at the resolved
+//   - READ filters datoms through the visibility predicate at the resolved
 //     snapshot, so the two axes behave exactly as the defaults table says.
 //   - SEARCH answers from an index fed on the WRITE path, so a search finds
 //     facts that were asserted rather than facts something indexed by hand.
@@ -71,5 +71,5 @@
 // ★ Rehydration goes through the same path as a live write, so the datom map, the
 // search index and the link resolver are populated by one piece of code. A
 // rehydration that restored only the datoms would leave SEARCH answering nothing
-// after a restart, with SELECT working and no error anywhere.
+// after a restart, with READ working and no error anywhere.
 package session

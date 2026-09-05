@@ -8,9 +8,15 @@ import (
 // Statement is anything the language can express.
 type Statement interface{ statement() }
 
-// Select reads attributes of an entity, optionally filtered and optionally
+// Read reads attributes of an entity, optionally filtered and optionally
 // qualified in time.
-type Select struct {
+//
+// ★ The verb is READ and the type is named for it (ADR-034). The old spelling
+// was SELECT, borrowed from a family — INSERT, UPDATE, DELETE — that this store
+// will never have, because it appends. Renaming the keyword and leaving the type
+// called `Select` would be a name that says one thing and means another, which is
+// the trap ADR-032 removed one record earlier.
+type Read struct {
 	// Attributes is the projection; empty means every attribute.
 	Attributes []string
 	// Entity names what is being read.
@@ -21,7 +27,7 @@ type Select struct {
 	Time TimeClause
 }
 
-func (*Select) statement() {}
+func (*Read) statement() {}
 
 // Predicate is one comparison.
 type Predicate struct {

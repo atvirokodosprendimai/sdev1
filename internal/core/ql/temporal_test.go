@@ -15,15 +15,15 @@ import (
 
 const now = int64(1_000_000)
 
-func parseSelect(t *testing.T, src string) *Select {
+func parseRead(t *testing.T, src string) *Read {
 	t.Helper()
 	stmt, err := Parse(src)
 	if err != nil {
 		t.Fatalf("Parse(%q): %v", src, err)
 	}
-	sel, ok := stmt.(*Select)
+	sel, ok := stmt.(*Read)
 	if !ok {
-		t.Fatalf("Parse(%q) returned %T, want *Select", src, stmt)
+		t.Fatalf("Parse(%q) returned %T, want *Read", src, stmt)
 	}
 	return sel
 }
@@ -51,32 +51,32 @@ func TestTimeClauseImplementsTheDefaultsTable(t *testing.T) {
 	}{
 		{
 			wrote:       "nothing",
-			src:         "SELECT name FROM person",
+			src:         "READ name FROM person",
 			wantAsOfSet: false,
 			wantValidAt: now,
 		},
 		{
 			wrote:       "AS OF t",
-			src:         "SELECT name FROM person AS OF 500",
+			src:         "READ name FROM person AS OF 500",
 			wantAsOfSet: false, // OPEN — this is the row that matters
 			wantValidAt: instant,
 		},
 		{
 			wrote:       "AS OF t TRANSACTION u",
-			src:         "SELECT name FROM person AS OF 500 TRANSACTION 900",
+			src:         "READ name FROM person AS OF 500 TRANSACTION 900",
 			wantAsOfSet: true,
 			wantAsOf:    txWall,
 			wantValidAt: instant,
 		},
 		{
 			wrote:       "TRANSACTION u",
-			src:         "SELECT name FROM person TRANSACTION 900",
+			src:         "READ name FROM person TRANSACTION 900",
 			wantAsOfSet: true,
 			wantAsOf:    txWall,
 			wantValidAt: now,
 		},
 	} {
-		sel := parseSelect(t, row.src)
+		sel := parseRead(t, row.src)
 		q := sel.Time.Resolve(now)
 
 		if row.wantAsOfSet {
@@ -106,7 +106,7 @@ func TestTimeClauseImplementsTheDefaultsTable(t *testing.T) {
 // at that past instant sees it. Under the rejected behaviour it does not,
 // because the write's transaction time is after the cutoff.
 func TestLoneInstantBindsValidTimeOnly(t *testing.T) {
-	sel := parseSelect(t, "SELECT balance FROM account AS OF 100")
+	sel := parseRead(t, "READ balance FROM account AS OF 100")
 	q := sel.Time.Resolve(now)
 
 	if q.AsOf != nil {
@@ -120,7 +120,7 @@ func TestLoneInstantBindsValidTimeOnly(t *testing.T) {
 
 	// Writing the transaction qualifier explicitly is how a caller asks the other
 	// question, and it is a DIFFERENT statement.
-	both := parseSelect(t, "SELECT balance FROM account AS OF 100 TRANSACTION 100")
+	both := parseRead(t, "READ balance FROM account AS OF 100 TRANSACTION 100")
 	qb := both.Time.Resolve(now)
 	if qb.AsOf == nil || qb.AsOf.HLC.Wall != 100 {
 		t.Errorf("an explicit transaction qualifier was not carried: %v", qb.AsOf)

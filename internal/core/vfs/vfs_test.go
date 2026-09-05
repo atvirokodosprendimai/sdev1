@@ -42,9 +42,9 @@ func TestAPathCompilesToAQuery(t *testing.T) {
 			if statement == nil {
 				t.Fatalf("%q compiled to a nil statement, so it is answered by reaching past the language rather than through it", tc.path)
 			}
-			selection, isSelect := statement.(*ql.Select)
-			if !isSelect {
-				t.Fatalf("%q compiled to %T, want *ql.Select", tc.path, statement)
+			selection, isRead := statement.(*ql.Read)
+			if !isRead {
+				t.Fatalf("%q compiled to %T, want *ql.Read", tc.path, statement)
 			}
 			if selection.Entity != tc.entity {
 				t.Fatalf("%q selects entity %q, want %q", tc.path, selection.Entity, tc.entity)
@@ -90,14 +90,14 @@ func TestASnapshotPathIsAnOrdinaryPath(t *testing.T) {
 	if !ok {
 		t.Fatal("a snapshot path compiled to nothing")
 	}
-	when := statement.(*ql.Select).Time
+	when := statement.(*ql.Read).Time
 	if when.ValidAt == nil || *when.ValidAt != instant {
 		t.Fatal("the instant did not reach the statement")
 	}
 	// Carried AS WRITTEN: resolving here would be a second implementation of the
 	// defaults table, and two drift invisibly until a query returns the wrong
 	// history.
-	if bareStatement, _ := bare.Compile(); bareStatement.(*ql.Select).Time.ValidAt != nil {
+	if bareStatement, _ := bare.Compile(); bareStatement.(*ql.Read).Time.ValidAt != nil {
 		t.Fatal("a path with no snapshot prefix resolved a default instant itself")
 	}
 

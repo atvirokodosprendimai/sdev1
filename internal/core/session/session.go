@@ -129,7 +129,7 @@ type Result struct {
 	Statement string
 	// Wrote is the datom a write produced, or nil.
 	Wrote *ports.Datom
-	// Rows are the attribute/value pairs a SELECT returned.
+	// Rows are the attribute/value pairs a READ returned.
 	Rows []Row
 	// Hits are the subjects a SEARCH returned, best first.
 	Hits []search.Scored
@@ -157,8 +157,8 @@ func (s *Session) Run(src string) (Result, error) {
 	switch v := stmt.(type) {
 	case *ql.Write:
 		return s.write(src, v)
-	case *ql.Select:
-		return s.selectFrom(src, v)
+	case *ql.Read:
+		return s.readFrom(src, v)
 	case *ql.Search:
 		return s.search(src, v)
 	case *ql.Traverse:
@@ -206,7 +206,7 @@ func (s *Session) write(src string, w *ql.Write) (Result, error) {
 //
 // ⚠ ONE path, used by a live write and by rehydration alike. A rehydration that
 // restored the datom map and forgot the index is the quietest failure available
-// here: SELECT works, the restart obviously worked, and SEARCH returns nothing
+// here: READ works, the restart obviously worked, and SEARCH returns nothing
 // with no error anywhere. Having one place to populate is what makes that
 // unwritable rather than merely unlikely.
 func (s *Session) record(d ports.Datom) error {
@@ -234,12 +234,12 @@ func (s *Session) record(d ports.Datom) error {
 	return nil
 }
 
-// selectFrom answers a SELECT at the resolved snapshot.
-// ★ There is no projection here any more. ADR-027 owns what a SELECT returns, and
+// readFrom answers a READ at the resolved snapshot.
+// ★ There is no projection here any more. ADR-027 owns what a READ returns, and
 // this hands the statement to it — two implementations of one thing drift, and
 // the one that drifts is whichever nobody is reading.
-func (s *Session) selectFrom(src string, sel *ql.Select) (Result, error) {
-	rows, err := eval.Select(context.Background(), s.reader(), sel, s.now())
+func (s *Session) readFrom(src string, sel *ql.Read) (Result, error) {
+	rows, err := eval.Read(context.Background(), s.reader(), sel, s.now())
 	if err != nil {
 		return Result{}, err
 	}
@@ -258,7 +258,7 @@ func (s *Session) selectFrom(src string, sel *ql.Select) (Result, error) {
 
 // reader returns what a statement is evaluated against.
 //
-// ★ With a store, a SELECT costs ONE entity read rather than the leaf this
+// ★ With a store, a READ costs ONE entity read rather than the leaf this
 // session happens to be holding. Without one, the session's own datoms are served
 // through the same port, so a statement takes the same path either way.
 func (s *Session) reader() ports.Reader {
@@ -271,7 +271,7 @@ func (s *Session) reader() ports.Reader {
 // memoryReader serves the session's own datoms as a [ports.Reader].
 //
 // ⚠ It filters by the snapshot, because that is what the port promises. A reader
-// that returned everything would work only because [eval.Select] filters again,
+// that returned everything would work only because [eval.Read] filters again,
 // and would be wrong for any other caller.
 type memoryReader struct{ s *Session }
 
@@ -343,7 +343,7 @@ func (s *Session) traverse(src string, t *ql.Traverse) (Result, error) {
 type datomLinks struct{ session *Session }
 
 func (d *datomLinks) References(entity string, at temporal.Query) ([]string, error) {
-	// Latest visible datom per attribute, exactly as a SELECT would see it.
+	// Latest visible datom per attribute, exactly as a READ would see it.
 	latest := make(map[string]ports.Datom)
 	for _, dat := range d.session.datoms[entity] {
 		if !temporal.Visible(dat.Valid.From, dat.Valid.To, dat.TxID, at) {

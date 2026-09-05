@@ -45,8 +45,15 @@ func (k Kind) String() string {
 // backtick quoting in [Lexer.Next] is what pays for the second group, and it was
 // added before them rather than after.
 var keywords = map[string]bool{
-	"SELECT": true, "FROM": true, "WHERE": true,
+	"READ": true, "FROM": true, "WHERE": true,
 	"AS": true, "OF": true, "TRANSACTION": true,
+
+	// ⚠ SELECT is RESERVED rather than removed (ADR-034). It names no statement
+	// and never will; it is here so that typing it is refused BY NAME. Deleting
+	// the entry would make it lex as an ordinary identifier, so `SELECT * FROM x`
+	// would fail inside the projection with a message about attribute names and
+	// never mention that the verb was the problem.
+	"SELECT": true,
 	"MATCH": true, "SHAPE": true, "LIKE": true,
 	"REQUIRE": true, "OPTIONAL": true, "SIMILARITY": true,
 	"WITH": true, "COMPRESSION": true,

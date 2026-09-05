@@ -47,7 +47,7 @@ func TestAWriteCannotSetTransactionTime(t *testing.T) {
 
 	// ⚠ Positive control on the other side of the rule: the same clause is still
 	// legal on a READ. Without this, deleting the keyword outright would pass.
-	if _, err := Parse(`SELECT * FROM planet-7 TRANSACTION 1700000500`); err != nil {
+	if _, err := Parse(`READ * FROM planet-7 TRANSACTION 1700000500`); err != nil {
 		t.Fatalf("TRANSACTION stopped parsing on a read: %v — the refusal must be about WRITES, "+
 			"not about the keyword", err)
 	}

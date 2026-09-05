@@ -28,8 +28,8 @@ func mustRun(t *testing.T, s *Session, src string) Result {
 // TestAssertThenSelectReadsItBack is the loop this whole task exists to close.
 // TestWhereFiltersForACaller is this defect stated where a caller meets it.
 //
-// ⚠ `Select.Where` parsed from ADR-011 onward and was evaluated nowhere, so
-// `SELECT * FROM planet-7 WHERE name = "Mars"` returned every attribute of
+// ⚠ `Read.Where` parsed from ADR-011 onward and was evaluated nowhere, so
+// `READ * FROM planet-7 WHERE name = "Mars"` returned every attribute of
 // planet-7. No error, no warning, and no way to tell that the question asked was
 // not the question answered.
 func TestWhereFiltersForACaller(t *testing.T) {
@@ -37,7 +37,7 @@ func TestWhereFiltersForACaller(t *testing.T) {
 	mustRun(t, s, `ASSERT planet-7 name = "Terra"`)
 	mustRun(t, s, `ASSERT planet-7 class = "terrestrial"`)
 
-	narrow := mustRun(t, s, `SELECT * FROM planet-7 WHERE name = "Mars"`)
+	narrow := mustRun(t, s, `READ * FROM planet-7 WHERE name = "Mars"`)
 	if len(narrow.Rows) != 0 {
 		t.Errorf("a predicate that matches nothing returned %d rows; the clause is being ignored",
 			len(narrow.Rows))
@@ -45,18 +45,18 @@ func TestWhereFiltersForACaller(t *testing.T) {
 
 	// The control: a predicate that DOES match must still return the rows, or
 	// "filters everything" would pass the assertion above.
-	wide := mustRun(t, s, `SELECT * FROM planet-7 WHERE name = "Terra"`)
+	wide := mustRun(t, s, `READ * FROM planet-7 WHERE name = "Terra"`)
 	if len(wide.Rows) != 2 {
 		t.Errorf("a predicate that matches returned %d rows, want both attributes", len(wide.Rows))
 	}
 
 	// The published guide's shape: the predicate names an attribute the
 	// projection does not return.
-	guide := mustRun(t, s, `SELECT name FROM planet-7 WHERE class = "terrestrial"`)
+	guide := mustRun(t, s, `READ name FROM planet-7 WHERE class = "terrestrial"`)
 	if len(guide.Rows) != 1 || guide.Rows[0].Attribute != "name" {
-		t.Errorf("SELECT name ... WHERE class = ... returned %+v, want just the name row", guide.Rows)
+		t.Errorf("READ name ... WHERE class = ... returned %+v, want just the name row", guide.Rows)
 	}
-	miss := mustRun(t, s, `SELECT name FROM planet-7 WHERE class = "gas giant"`)
+	miss := mustRun(t, s, `READ name FROM planet-7 WHERE class = "gas giant"`)
 	if len(miss.Rows) != 0 {
 		t.Errorf("the same query with a non-matching class returned %d rows", len(miss.Rows))
 	}
@@ -70,9 +70,9 @@ func TestAssertThenSelectReadsItBack(t *testing.T) {
 		t.Fatal("ASSERT produced no datom")
 	}
 
-	read := mustRun(t, s, `SELECT * FROM planet-7`)
+	read := mustRun(t, s, `READ * FROM planet-7`)
 	if len(read.Rows) != 1 {
-		t.Fatalf("SELECT returned %d rows, want 1: %+v", len(read.Rows), read.Rows)
+		t.Fatalf("READ returned %d rows, want 1: %+v", len(read.Rows), read.Rows)
 	}
 	got := read.Rows[0]
 	if got.Entity != "planet-7" || got.Attribute != "mass" || got.Value != "5972" {
@@ -81,13 +81,13 @@ func TestAssertThenSelectReadsItBack(t *testing.T) {
 
 	// A projection narrows it, and an unknown attribute returns nothing rather
 	// than everything.
-	narrow := mustRun(t, s, `SELECT mass FROM planet-7`)
+	narrow := mustRun(t, s, `READ mass FROM planet-7`)
 	if len(narrow.Rows) != 1 {
-		t.Fatalf("SELECT mass returned %d rows", len(narrow.Rows))
+		t.Fatalf("READ mass returned %d rows", len(narrow.Rows))
 	}
-	none := mustRun(t, s, `SELECT radius FROM planet-7`)
+	none := mustRun(t, s, `READ radius FROM planet-7`)
 	if len(none.Rows) != 0 {
-		t.Fatalf("SELECT of an unwritten attribute returned %+v", none.Rows)
+		t.Fatalf("READ of an unwritten attribute returned %+v", none.Rows)
 	}
 }
 
@@ -97,23 +97,23 @@ func TestAReadAtAPastInstantDoesNotSeeALaterWrite(t *testing.T) {
 	s, _ := newTestSession()
 	mustRun(t, s, `ASSERT planet-7 mass = 5972 VALID FROM 500`)
 
-	before := mustRun(t, s, `SELECT * FROM planet-7 AS OF 100`)
+	before := mustRun(t, s, `READ * FROM planet-7 AS OF 100`)
 	if len(before.Rows) != 0 {
 		t.Fatalf("a read at instant 100 saw a fact valid from 500: %+v", before.Rows)
 	}
 
-	after := mustRun(t, s, `SELECT * FROM planet-7 AS OF 600`)
+	after := mustRun(t, s, `READ * FROM planet-7 AS OF 600`)
 	if len(after.Rows) != 1 {
 		t.Fatalf("a read at instant 600 did not see a fact valid from 500: %+v", after.Rows)
 	}
 
 	// A closed interval ends.
 	mustRun(t, s, `ASSERT planet-9 class = 'giant' VALID FROM 100 TO 200`)
-	inside := mustRun(t, s, `SELECT * FROM planet-9 AS OF 150`)
+	inside := mustRun(t, s, `READ * FROM planet-9 AS OF 150`)
 	if len(inside.Rows) != 1 {
 		t.Fatalf("a read inside the interval saw nothing: %+v", inside.Rows)
 	}
-	outside := mustRun(t, s, `SELECT * FROM planet-9 AS OF 250`)
+	outside := mustRun(t, s, `READ * FROM planet-9 AS OF 250`)
 	if len(outside.Rows) != 0 {
 		t.Fatalf("a read after the interval still saw the fact: %+v", outside.Rows)
 	}
@@ -147,10 +147,10 @@ func TestTheSessionAssignsTransactionTime(t *testing.T) {
 
 	// And a read does not consume one.
 	before := s.minter.Mint()
-	mustRun(t, s, `SELECT * FROM planet-7`)
+	mustRun(t, s, `READ * FROM planet-7`)
 	after := s.minter.Mint()
 	if after.Seq != before.Seq+1 {
-		t.Fatalf("a SELECT consumed %d transaction identifiers; reads must not mint",
+		t.Fatalf("a READ consumed %d transaction identifiers; reads must not mint",
 			after.Seq-before.Seq-1)
 	}
 }
@@ -191,7 +191,7 @@ func TestRetractedFactIsNotReturned(t *testing.T) {
 	s, _ := newTestSession()
 
 	mustRun(t, s, `ASSERT planet-7 class = 'terrestrial'`)
-	if got := mustRun(t, s, `SELECT * FROM planet-7`); len(got.Rows) != 1 {
+	if got := mustRun(t, s, `READ * FROM planet-7`); len(got.Rows) != 1 {
 		t.Fatalf("the asserted fact was not readable: %+v", got.Rows)
 	}
 
@@ -205,7 +205,7 @@ func TestRetractedFactIsNotReturned(t *testing.T) {
 		t.Fatal("a retraction was recorded as an assertion")
 	}
 
-	after := mustRun(t, s, `SELECT * FROM planet-7`)
+	after := mustRun(t, s, `READ * FROM planet-7`)
 	if len(after.Rows) != 0 {
 		t.Fatalf("a retracted fact was still returned: %+v", after.Rows)
 	}

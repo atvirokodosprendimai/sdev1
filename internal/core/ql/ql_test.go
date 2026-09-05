@@ -10,7 +10,7 @@ import (
 // TestLexerSpansAndPositions checks tokens carry accurate byte offsets, so an
 // error can point at the right place.
 func TestLexerSpansAndPositions(t *testing.T) {
-	src := `SELECT name, age FROM person WHERE age >= 30 AS OF -500`
+	src := `READ name, age FROM person WHERE age >= 30 AS OF -500`
 	tokens := NewLexer(src).Tokens()
 
 	if len(tokens) == 0 || tokens[len(tokens)-1].Kind != KindEOF {
@@ -74,18 +74,18 @@ func TestParseErrorNamesPositionAndExpectation(t *testing.T) {
 		src      string
 		expected string
 	}{
-		{"", "SELECT"},
-		{"DELETE FROM person", "SELECT"},
-		{"SELECT FROM person", "an attribute"},
-		{"SELECT name person", "keyword FROM"},
-		{"SELECT name FROM", "an entity"},
-		{"SELECT name FROM person WHERE", "an attribute"},
-		{"SELECT name FROM person WHERE age", "comparison operator"},
-		{"SELECT name FROM person WHERE age >", "a value"},
-		{"SELECT name FROM person AS 500", "keyword OF"},
-		{"SELECT name FROM person AS OF person", "an instant"},
-		{"SELECT name FROM person TRANSACTION person", "a transaction"},
-		{"SELECT name FROM person EXTRA", "end of statement"},
+		{"", "READ"},
+		{"DELETE FROM person", "READ"},
+		{"READ FROM person", "an attribute"},
+		{"READ name person", "keyword FROM"},
+		{"READ name FROM", "an entity"},
+		{"READ name FROM person WHERE", "an attribute"},
+		{"READ name FROM person WHERE age", "comparison operator"},
+		{"READ name FROM person WHERE age >", "a value"},
+		{"READ name FROM person AS 500", "keyword OF"},
+		{"READ name FROM person AS OF person", "an instant"},
+		{"READ name FROM person TRANSACTION person", "a transaction"},
+		{"READ name FROM person EXTRA", "end of statement"},
 	} {
 		_, err := Parse(c.src)
 		if err == nil {
@@ -114,7 +114,7 @@ func TestParseErrorNamesPositionAndExpectation(t *testing.T) {
 
 	// A valid statement produces no error, so the cases above are about the
 	// failures rather than about a parser that refuses everything.
-	if _, err := Parse("SELECT name FROM person"); err != nil {
+	if _, err := Parse("READ name FROM person"); err != nil {
 		t.Errorf("a valid statement was refused: %v", err)
 	}
 }
@@ -122,7 +122,7 @@ func TestParseErrorNamesPositionAndExpectation(t *testing.T) {
 // TestSelectRoundTripsThroughTheAST checks a statement parses to the AST a
 // caller expects, with each of the four time-clause shapes.
 func TestSelectRoundTripsThroughTheAST(t *testing.T) {
-	sel := parseSelect(t, "SELECT name, email FROM person WHERE age >= 30")
+	sel := parseRead(t, "READ name, email FROM person WHERE age >= 30")
 	if !slices.Equal(sel.Attributes, []string{"name", "email"}) {
 		t.Errorf("attributes = %v, want [name email]", sel.Attributes)
 	}
@@ -140,9 +140,9 @@ func TestSelectRoundTripsThroughTheAST(t *testing.T) {
 	}
 
 	// `*` projects everything, which is the empty attribute list.
-	star := parseSelect(t, "SELECT * FROM person")
+	star := parseRead(t, "READ * FROM person")
 	if len(star.Attributes) != 0 {
-		t.Errorf("SELECT * gave attributes %v, want none — empty means every attribute", star.Attributes)
+		t.Errorf("READ * gave attributes %v, want none — empty means every attribute", star.Attributes)
 	}
 
 	// No WHERE means no predicate, rather than an empty one that matches nothing.
@@ -151,7 +151,7 @@ func TestSelectRoundTripsThroughTheAST(t *testing.T) {
 	}
 
 	// A string literal is not marked as a number.
-	str := parseSelect(t, "SELECT name FROM person WHERE city = 'Vilnius'")
+	str := parseRead(t, "READ name FROM person WHERE city = 'Vilnius'")
 	if str.Where.Value != "Vilnius" || str.Where.ValueIsNumber {
 		t.Errorf("predicate = %+v, want the string Vilnius", *str.Where)
 	}
@@ -163,12 +163,12 @@ func TestSelectRoundTripsThroughTheAST(t *testing.T) {
 		hasInstant bool
 		hasTx      bool
 	}{
-		{"SELECT name FROM person", false, false},
-		{"SELECT name FROM person AS OF 500", true, false},
-		{"SELECT name FROM person AS OF 500 TRANSACTION 900", true, true},
-		{"SELECT name FROM person TRANSACTION 900", false, true},
+		{"READ name FROM person", false, false},
+		{"READ name FROM person AS OF 500", true, false},
+		{"READ name FROM person AS OF 500 TRANSACTION 900", true, true},
+		{"READ name FROM person TRANSACTION 900", false, true},
 	} {
-		got := parseSelect(t, c.src)
+		got := parseRead(t, c.src)
 		if (got.Time.ValidAt != nil) != c.hasInstant {
 			t.Errorf("%q: instant present = %v, want %v", c.src, got.Time.ValidAt != nil, c.hasInstant)
 		}

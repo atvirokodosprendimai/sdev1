@@ -49,7 +49,7 @@ type Row struct {
 	TxID      tx.TxID
 }
 
-// Select evaluates a SELECT against a reader, at one instant.
+// Read evaluates a READ against a reader, at one instant.
 //
 // ⚠ now is an INSTANT, not a clock. A clock could be read twice, and two readings
 // inside one statement is a query that spans two moments — which is the defect
@@ -57,7 +57,7 @@ type Row struct {
 //
 // It performs exactly one [ports.Reader.Load], for the entity the statement
 // names.
-func Select(ctx context.Context, r ports.Reader, sel *ql.Select, now int64) ([]Row, error) {
+func Read(ctx context.Context, r ports.Reader, sel *ql.Read, now int64) ([]Row, error) {
 	// Resolved ONCE, here, by the one implementation of ADR-002 rule 6's table.
 	// Everything below uses this value and re-derives nothing.
 	resolved := sel.Time.Resolve(now)
@@ -78,7 +78,7 @@ func Select(ctx context.Context, r ports.Reader, sel *ql.Select, now int64) ([]R
 	if sel.Where != nil {
 		// ⚠ Tested against CARRIED — the entity's whole attribute set — and never
 		// against `projected`. The published guide has
-		// `SELECT name FROM planet-7 WHERE class = 'terrestrial'`, so a predicate
+		// `READ name FROM planet-7 WHERE class = 'terrestrial'`, so a predicate
 		// must be able to name an attribute the projection does not return.
 		// Narrowing first leaves nothing to test against and the query silently
 		// returns nothing, on data where it should return a row.
@@ -112,7 +112,7 @@ func Select(ctx context.Context, r ports.Reader, sel *ql.Select, now int64) ([]R
 }
 
 // project narrows an entity's carried attributes to the ones a statement asked
-// for. An empty list is `SELECT *` and returns them all.
+// for. An empty list is `READ *` and returns them all.
 func project(carried map[string]ports.Datom, attributes []string) map[string]ports.Datom {
 	if len(attributes) == 0 {
 		return carried

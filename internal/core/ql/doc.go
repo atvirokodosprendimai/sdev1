@@ -3,7 +3,7 @@
 //
 // # Time is a clause, not a family of verbs
 //
-// The alternative was a verb per combination — SELECT and SELECT AS OF, MATCH
+// The alternative was a verb per combination — READ and READ AS OF, MATCH
 // and MATCH AS OF — and it fails twice. The list doubles with every new
 // statement, and a per-leg time qualifier ("this leg as of last year, that one
 // now") would need a second grammar rather than falling out of the first.

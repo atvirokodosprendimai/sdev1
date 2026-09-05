@@ -12,13 +12,13 @@ import (
 // the API without a test failing. A code block in a document that nothing
 // executes is a claim, not a sample.
 func Example_parseAndResolve() {
-	stmt, err := ql.Parse("SELECT mass FROM planet-7 AS OF 1700000000")
+	stmt, err := ql.Parse("READ mass FROM planet-7 AS OF 1700000000")
 	if err != nil {
 		fmt.Println("refused:", err)
 		return
 	}
 
-	sel := stmt.(*ql.Select)
+	sel := stmt.(*ql.Read)
 	fmt.Println("entity:    ", sel.Entity)
 	fmt.Println("attributes:", sel.Attributes)
 

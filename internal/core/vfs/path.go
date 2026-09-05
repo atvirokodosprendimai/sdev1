@@ -179,11 +179,11 @@ func (p Path) Compile() (ql.Statement, bool) {
 
 	switch p.Kind {
 	case KindAttributeFile:
-		return &ql.Select{Entity: p.Entity, Attributes: []string{p.Attribute}, Time: when}, true
+		return &ql.Read{Entity: p.Entity, Attributes: []string{p.Attribute}, Time: when}, true
 	case KindEntityDir:
 		// Reading a directory is reading every attribute of the entity, which is
 		// what an empty projection means.
-		return &ql.Select{Entity: p.Entity, Time: when}, true
+		return &ql.Read{Entity: p.Entity, Time: when}, true
 	default:
 		return nil, false
 	}
