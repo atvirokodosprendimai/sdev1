@@ -92,8 +92,8 @@ func TestReadReplacesSelect(t *testing.T) {
 // TestSelectIsStillAddressableAsAnAttribute checks that reserving a word did not
 // take an attribute name away.
 //
-// ★ ADR-021 paid for this in advance: every keyword stays reachable as
-// `` `like this` ``. Reserving SELECT would otherwise make an entity carrying an
+// ★ ADR-021 paid for this in advance: every keyword stays reachable by wrapping
+// it in backticks. Reserving SELECT would otherwise make an entity carrying an
 // attribute of that name unreadable, with no way to ask for it and no way to
 // migrate off it — a data-loss bug introduced by a rename.
 func TestSelectIsStillAddressableAsAnAttribute(t *testing.T) {

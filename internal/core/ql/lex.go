@@ -54,7 +54,7 @@ var keywords = map[string]bool{
 	// would fail inside the projection with a message about attribute names and
 	// never mention that the verb was the problem.
 	"SELECT": true,
-	"MATCH": true, "SHAPE": true, "LIKE": true,
+	"MATCH":  true, "SHAPE": true, "LIKE": true,
 	"REQUIRE": true, "OPTIONAL": true, "SIMILARITY": true,
 	"WITH": true, "COMPRESSION": true,
 
@@ -72,6 +72,10 @@ var keywords = map[string]bool{
 	// Added for the inbound read's paging clause (ADR-035). LIMIT arrived with
 	// SEARCH and is reused rather than spelled twice.
 	"OFFSET": true,
+
+	// Added for the absence clause (ADR-036). One word for one concept: it means
+	// the same thing in a READ and in a MATCH SHAPE.
+	"WITHOUT": true,
 }
 
 // RefMarker precedes an entity name to say the value is a LINK rather than text.

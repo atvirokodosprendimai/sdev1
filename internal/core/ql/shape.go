@@ -23,6 +23,12 @@ const (
 	LegRequired
 	// LegOptional: a leg that matches nothing binds nothing, and the row stays.
 	LegOptional
+	// LegExcluded: a leg that MATCHES drops the row (ADR-036).
+	//
+	// ⚠ It is the mirror of LegRequired, and it contributes NO BINDING at all —
+	// see [BuildRow]. It is a filter: a subject carrying the attribute is not a
+	// weaker match, it is not a match.
+	LegExcluded
 )
 
 func (k LegKind) String() string {
@@ -31,6 +37,8 @@ func (k LegKind) String() string {
 		return "required"
 	case LegOptional:
 		return "optional"
+	case LegExcluded:
+		return "excluded"
 	default:
 		return "unset"
 	}
@@ -118,11 +126,27 @@ func (r Row) Get(attribute string) (Binding, bool) {
 // optional case dropped the row too, `OPTIONAL` would mean the same as
 // `REQUIRE` — and the difference would only show on data where the leg is
 // sometimes absent, which is not the data anyone tests with.
+//
+// ⚠ An EXCLUDED leg that MATCHED drops the row, and one that matched nothing
+// contributes NO BINDING (ADR-036 rule 6). ★ Binding it as `Unbound` would be
+// actively wrong: `Unbound` already means "an OPTIONAL leg matched nothing", so
+// the two would render identically while saying opposite things — one that the
+// subject was asked for a value and had none, the other that it was required to
+// have none. An excluded leg is a FILTER, and its answer is already carried by
+// the row existing at all.
+//
+// ⚠ This narrows ADR-011's "one binding per leg" to one per leg THAT PROJECTS.
+// A consumer indexing Bindings positionally against Legs would be wrong.
 func BuildRow(subject string, legs []Leg, matched map[string]string) (Row, bool) {
 	row := Row{Subject: subject}
 	for _, leg := range legs {
 		value, ok := matched[leg.Attribute]
 		switch {
+		case leg.Kind == LegExcluded:
+			if ok {
+				return Row{}, false
+			}
+			// Matched nothing, which is what was asked. It binds nothing.
 		case ok:
 			row.Bindings = append(row.Bindings, Bound(leg.Attribute, value))
 		case leg.Kind == LegRequired:
@@ -161,6 +185,19 @@ func (p *parser) parseShape() (Statement, error) {
 	}
 	if p.acceptKeyword("OPTIONAL") {
 		legs, err := p.parseLegs(LegOptional)
+		if err != nil {
+			return nil, err
+		}
+		q.Legs = append(q.Legs, legs...)
+	}
+	// ⚠ Through the SAME parseLegs the other two use, so an excluded leg carries
+	// its own time clause without that being a special case. ADR-011's central
+	// property is that time is a clause and therefore attaches per leg; a leg
+	// kind that could not carry one would be the first exception to the thing
+	// that record exists to hold. "Did not have a nickname AS OF 1900" is a real
+	// question.
+	if p.acceptKeyword("WITHOUT") {
+		legs, err := p.parseLegs(LegExcluded)
 		if err != nil {
 			return nil, err
 		}

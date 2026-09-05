@@ -102,6 +102,14 @@ func readOne(ctx context.Context, r ports.Reader, sel *ql.Read,
 		}
 	}
 
+	// ADR-036: the absence clause, and it means the same thing here as over a
+	// set — return the entity only if it lacks the named attributes. ⚠ Tested
+	// against CARRIED for the same reason the predicate is: an excluded
+	// attribute need not be one the projection returns.
+	if carries(carried, sel.Without) {
+		return nil, nil
+	}
+
 	names := make([]string, 0, len(projected))
 	for name := range projected {
 		names = append(names, name)

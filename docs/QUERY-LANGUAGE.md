@@ -192,6 +192,37 @@ rather than a sequence:
 READ * FROM planet-7 LIMIT 5        -- refused: nothing to page
 ```
 
+## Absence: `WITHOUT`
+
+`WHERE` asks what a value IS. `WITHOUT` asks for an attribute that is **not
+there**:
+
+```sql
+READ ->name FROM [staff] WITHOUT ->thirdname
+READ ->name FROM [staff] WHERE ->rank = 3 WITHOUT ->thirdname
+READ ->name, ->lastname FROM [staff] WITHOUT ->thirdname, ->nickname
+READ * FROM planet-7 WITHOUT radius
+```
+
+★ **It is a clause, not a predicate, and that is the whole design.** `WHERE`
+holds exactly one comparison and the language has no `AND` — so if absence were a
+predicate, "has rank 3 and lacks a thirdname" would need boolean composition.
+Two clauses conjoin by being two clauses. No operator, no precedence, no
+parentheses.
+
+⚠ **Absence is relative to the snapshot, not to history.** `WITHOUT ->thirdname`
+means *does not have one at the instant you asked about* — never *never had one*.
+An attribute that was **retracted**, or whose validity interval has closed, is
+absent; ask `AS OF` an earlier instant and it is present again. Being able to ask
+the first question is what makes retraction mean anything.
+
+⚠ **An excluded attribute is never also required.** A member missing a
+*projected* or *compared* attribute is dropped; an attribute named in `WITHOUT` is
+named in order to be missing, so it is exempt. Without that exemption the clause
+would be unsatisfiable — and it would fail by returning nothing, which looks
+exactly like a correct answer.
+
+
 ## Time travel
 
 Two independent qualifiers, each optional, in this order:
@@ -328,19 +359,21 @@ Find subjects resembling a subject, on attributes you name:
 MATCH SHAPE LIKE planet-7
   REQUIRE mass, radius
   OPTIONAL nickname, discovered_by
+  WITHOUT retired
   SIMILARITY jaccard >= 0.8
 ```
 
-Both leg groups are optional and either may be omitted:
+All three leg groups are optional and any may be omitted:
 
 ```sql
 MATCH SHAPE LIKE planet-7 REQUIRE mass SIMILARITY jaccard >= 0.8
 MATCH SHAPE LIKE planet-7 OPTIONAL nickname SIMILARITY jaccard > 0.5
+MATCH SHAPE LIKE planet-7 WITHOUT retired SIMILARITY jaccard >= 0.9
 MATCH SHAPE LIKE planet-7 SIMILARITY jaccard >= 0.9
 ```
 
-`REQUIRE` must come before `OPTIONAL`. Legs from both groups land in one `Legs`
-slice in written order, each tagged with its `LegKind`.
+They are written in the order `REQUIRE`, `OPTIONAL`, `WITHOUT`. Legs from all
+three land in one `Legs` slice in written order, each tagged with its `LegKind`.
 
 **Semantics of a leg:**
 
@@ -348,12 +381,25 @@ slice in written order, each tagged with its `LegKind`.
 |---|---|---|
 | `REQUIRE` | binds the value | **the row is dropped** |
 | `OPTIONAL` | binds the value | binds **unbound**, and the row is **kept** |
+| `WITHOUT` | **the row is dropped** | binds **nothing**, and the row is **kept** |
 
 ⚠ Unbound is not the empty string. Conflating them is how a consumer silently
 reads "this subject has no nickname" as "this subject's nickname is blank". If
 the optional case dropped the row too, `OPTIONAL` would mean the same thing as
 `REQUIRE` — and the difference only shows on data where the leg is sometimes
 absent, which is never the data anyone tests with.
+
+⚠ **An excluded leg binds NOTHING — not `unbound`.** `Unbound` already means "an
+optional leg matched nothing", so reusing it would make two opposite statements
+render identically: one that the subject was asked for a value and had none, the
+other that it was required to have none. ★ An excluded leg is a **filter**, and
+its answer is already carried by the row existing at all. This means the row has
+one binding per leg **that projects**, not one per leg.
+
+★ An excluded leg carries its own time clause like any other, so
+`WITHOUT nickname AS OF 1600000000` asks whether the subject lacked one *then*.
+Time is a clause, which is why it attaches per leg — and a leg kind that could not
+take one would be the first exception to that.
 
 **The metric and threshold are required.** There is no default:
 
@@ -537,8 +583,11 @@ traverse    = "TRAVERSE" ident "DEPTH" number timeclause ;
 
 read        = "READ" projection "FROM" source
               [ "WHERE" predicate ]
+              [ "WITHOUT" attribute { "," attribute } ]
               [ page ]
               timeclause ;
+              (* WHERE and WITHOUT conjoin; there is no operator between them,
+                 which is how "has this and lacks that" avoids needing AND *)
 
 source      = ident | "[" ident "]" ;
               (* `e` is one entity; `[e]` is the entities that point AT it *)
@@ -565,6 +614,7 @@ attrlist    = ident { "," ident } ;
 shape       = "MATCH" "SHAPE" "LIKE" ident
               [ "REQUIRE"  legs ]
               [ "OPTIONAL" legs ]
+              [ "WITHOUT"  legs ]
               "SIMILARITY" ident ( ">=" | ">" ) number
               timeclause ;
 
@@ -588,11 +638,11 @@ codec       = "none" | "identity" | "zstd" ;
 | string | `KindString` | `'single'` or `"double"` quoted; `Token.Text` excludes the quotes |
 | punctuation | `KindPunct` | Any other single rune, or one of the two-character operators `>=` `<=` `!=` `==` |
 
-**The twenty-seven keywords**, all reserved:
+**The twenty-eight keywords**, all reserved:
 
 ```
 READ    FROM  WHERE  AS  OF  TRANSACTION  MATCH
-SHAPE   LIKE  REQUIRE  OPTIONAL  SIMILARITY  WITH  COMPRESSION
+SHAPE   LIKE  REQUIRE  OPTIONAL  WITHOUT  SIMILARITY  WITH  COMPRESSION
 SEARCH  IN  FACET  BY  LIMIT  OFFSET
 ASSERT  RETRACT  VALID  TO
 TRAVERSE  DEPTH
@@ -671,10 +721,14 @@ type Read struct {
 	Entity     string     // what is being read, or whose referrers are
 	Inbound    bool       // the source was written `FROM [Entity]`
 	Where      *Predicate // nil when there was no WHERE
+	Without    []string   // attributes the subject must NOT carry
 	Page       Page       // the paging clause as written
 	Time       TimeClause // as WRITTEN, before defaults
 }
 ```
+
+⚠ `Without` is a separate field rather than a kind of `Predicate` because it is a
+separate CLAUSE. `Where` and `Without` conjoin, and neither implies the other.
 
 ⚠ `Attributes` being empty is how `READ *` is represented. There is no separate
 "star" flag, so a consumer must treat empty as *all* rather than as *none*.
@@ -870,13 +924,18 @@ const (
 	LegKindUnset LegKind = iota // the zero value, never valid
 	LegRequired                 // matches nothing → the row is dropped
 	LegOptional                 // matches nothing → unbound, row kept
+	LegExcluded                 // MATCHES → the row is dropped; binds nothing
 )
 
-func (k LegKind) String() string  // "unset" | "required" | "optional"
+func (k LegKind) String() string  // "unset" | "required" | "optional" | "excluded"
 ```
 
 `LegKindUnset` exists so that a zero-valued `Leg` is detectably wrong rather than
-silently behaving like one of the two real kinds.
+silently behaving like one of the real kinds.
+
+⚠ `LegExcluded` is the mirror of `LegRequired` and contributes **no binding**. A
+consumer indexing `Row.Bindings` positionally against `ShapeQuery.Legs` would be
+wrong: there is one binding per leg that projects.
 
 ## The result model: `Row` and `Binding`
 
