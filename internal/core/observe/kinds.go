@@ -66,6 +66,19 @@ const (
 	// rolling restart and a genuine shortfall are the same observation, so only
 	// how long it lasts can separate them.
 	KindLeafBelowFloor Kind = "durability.leaf-below-floor"
+
+	// KindClockSkewRefused: a remote timestamp was refused for sitting further
+	// ahead of this node's wall reading than the declared bound allows.
+	//
+	// ⚠ Declared because a refusal nobody can see is a refusal nobody will fix.
+	// The symptom — one node's writes quietly not landing — looks like a network
+	// problem from every other angle, and the skew is the one fact that would
+	// identify it.
+	//
+	// ★ The MESSAGE is refused, never the node (ADR-042): a skewed node's data
+	// is correct and its storage is fine, so evicting it loses a working replica
+	// over a clock.
+	KindClockSkewRefused Kind = "hlc.clock-skew-refused"
 )
 
 func init() {
@@ -114,6 +127,11 @@ func init() {
 			Kind:   KindLeafBelowFloor,
 			Reader: "console: durability panel — leaves short of copies, oldest first, and their obligations",
 			Fields: []string{"leaf", "domains", "required", "grace"},
+		},
+		{
+			Kind:   KindClockSkewRefused,
+			Reader: "console: cluster panel — nodes whose clocks are drifting, and by how much",
+			Fields: []string{"node", "ahead", "bound"},
 		},
 	} {
 		if err := Register(d); err != nil {
