@@ -104,6 +104,27 @@ type Reader interface {
 	Attributes(ctx context.Context, entity string, at Snapshot) ([]string, error)
 }
 
+// Inbound answers which entities point AT one: the referrers of a target, which
+// is what makes an entity a table (ADR-035).
+//
+// ⚠ It is SEPARATE from [Reader], and deliberately. `Reader` is entity-addressed
+// — `Load` answers about an identifier the caller already holds — while this is a
+// scan, and a reader that serves one entity cannot perform one. Folding it into
+// `Reader` would make every implementation, including a future routed remote one,
+// claim a capability it may not have.
+//
+// ⚠ What it returns is a CANDIDATE list, never an answer. The datoms decide: a
+// caller must confirm each candidate still carries an asserted reference to the
+// target at the snapshot. An index that appends never un-proposes a member whose
+// reference was RETRACTED, so an unconfirmed candidate is a fact that has been
+// withdrawn and still looks live.
+type Inbound interface {
+	// Referrers returns entities that may carry a reference to target, visible
+	// at the snapshot. Duplicates and stale entries are permitted; absences are
+	// not.
+	Referrers(ctx context.Context, target string, at Snapshot) ([]string, error)
+}
+
 // Writer appends datoms. It has no method that reads.
 //
 // The write path is handed [Store] rather than a Writer alone, because a writer

@@ -19,6 +19,17 @@ import (
 // about which is canonical.
 var ErrSelectRenamed = errors.New("ql: SELECT was renamed to READ")
 
+// ErrJoinNotSupported reports an attribute whose `->` marker disagrees with what
+// FROM named.
+//
+// ★ Inside `FROM [e]` every attribute belongs to a MEMBER and is written `->a`. A
+// bare `a` would have to mean `e`'s OWN attribute — a join, which is not
+// implemented — so it is refused rather than treated as a synonym. ⚠ That refusal
+// is what keeps the join addable: if both spellings parsed today, adding it later
+// would silently change what already-written statements mean.
+var ErrJoinNotSupported = errors.New("ql: an attribute of the entity named by FROM cannot be " +
+	"read alongside its referrers; that is a join, and it is not implemented")
+
 // ParseError says where a parse failed and what was expected there.
 //
 // ★ It is part of the public contract rather than a diagnostic. A parser that
@@ -139,15 +150,17 @@ func (p *parser) parseRead() (Statement, error) {
 
 	sel := &Read{}
 	// `*` projects everything; otherwise a comma-separated list.
+	var projected []attribute
 	if t := p.peek(); t.Kind == KindPunct && t.Text == "*" {
 		p.next()
 	} else {
 		for {
-			name, err := p.expectIdent("an attribute name")
+			a, err := p.parseAttribute()
 			if err != nil {
 				return nil, err
 			}
-			sel.Attributes = append(sel.Attributes, name)
+			projected = append(projected, a)
+			sel.Attributes = append(sel.Attributes, a.name)
 			if t := p.peek(); t.Kind == KindPunct && t.Text == "," {
 				p.next()
 				continue
@@ -159,19 +172,34 @@ func (p *parser) parseRead() (Statement, error) {
 	if err := p.expectKeyword("FROM"); err != nil {
 		return nil, err
 	}
-	entity, err := p.expectIdent("an entity name")
+	entity, inbound, err := p.parseSource()
 	if err != nil {
 		return nil, err
 	}
-	sel.Entity = entity
+	sel.Entity, sel.Inbound = entity, inbound
+
+	// ⚠ Checked AFTER the source, because that is what decides which spelling is
+	// correct — the projection is written first and can only be judged second.
+	if err := p.checkMarkers(projected, sel); err != nil {
+		return nil, err
+	}
 
 	if p.acceptKeyword("WHERE") {
-		pred, err := p.parsePredicate()
+		pred, on, err := p.parsePredicate()
 		if err != nil {
+			return nil, err
+		}
+		if err := p.checkMarkers([]attribute{on}, sel); err != nil {
 			return nil, err
 		}
 		sel.Where = pred
 	}
+
+	page, err := p.parsePage(sel)
+	if err != nil {
+		return nil, err
+	}
+	sel.Page = page
 
 	clause, err := p.parseTimeClause()
 	if err != nil {
@@ -182,19 +210,155 @@ func (p *parser) parseRead() (Statement, error) {
 	return sel, nil
 }
 
-func (p *parser) parsePredicate() (*Predicate, error) {
-	attr, err := p.expectIdent("an attribute name")
+// attribute is one attribute name as WRITTEN: its spelling, whether it carried
+// the `->` marker, and where it was, so a marker that disagrees with the source
+// can be reported at the place the caller typed it.
+type attribute struct {
+	name   string
+	marked bool
+	pos    int
+}
+
+// parseAttribute reads `name` or `->name`.
+//
+// ⚠ The marker is GRAMMAR and never part of the name, exactly as the backticks
+// around a quoted identifier are not. Storing it would make `->name` and `name`
+// different attributes in the store, which is a data model invented by a parser.
+func (p *parser) parseAttribute() (attribute, error) {
+	t := p.peek()
+	marked := false
+	if t.Kind == KindPunct && t.Text == RefMarker {
+		p.next()
+		marked = true
+	}
+	name, err := p.expectIdent("an attribute name")
 	if err != nil {
-		return nil, err
+		return attribute{}, err
+	}
+	return attribute{name: name, marked: marked, pos: t.Pos}, nil
+}
+
+// parseSource reads what FROM names: `e` is one entity, `[e]` is the SET of
+// entities that point at it (ADR-035).
+//
+// ★ The identifier is stored without its brackets. They are a property of the
+// SOURCE, not of the name — the same entity is addressed either way, and which
+// question is being asked is what differs.
+func (p *parser) parseSource() (entity string, inbound bool, err error) {
+	t := p.peek()
+	if !(t.Kind == KindPunct && t.Text == "[") {
+		name, err := p.expectIdent("an entity name")
+		return name, false, err
+	}
+	p.next()
+	name, err := p.expectIdent("an entity name")
+	if err != nil {
+		return "", false, err
+	}
+	if closing := p.peek(); !(closing.Kind == KindPunct && closing.Text == "]") {
+		return "", false, p.errorAt(closing, `a closing "]"`)
+	}
+	p.next()
+	return name, true, nil
+}
+
+// checkMarkers refuses an attribute whose marker disagrees with the source.
+//
+// ⚠ ADR-035 rule 3, and it is the rule that keeps a join addable. Inside an
+// inbound read a bare name would have to mean the INDEX entity's own attribute,
+// which is a join and is not implemented. If the two spellings were synonyms
+// today, adding the join later would silently change what already-written
+// statements mean rather than failing them.
+func (p *parser) checkMarkers(attrs []attribute, sel *Read) error {
+	for _, a := range attrs {
+		if a.marked == sel.Inbound {
+			continue
+		}
+		found := "attribute " + strconv.Quote(a.name)
+		expected := strconv.Quote(RefMarker+a.name) +
+			", because FROM names a set: a bare name would read " + strconv.Quote(sel.Entity) +
+			"'s own attribute, which is a join and is not implemented"
+		if a.marked {
+			found = "attribute " + strconv.Quote(RefMarker+a.name)
+			expected = strconv.Quote(a.name) +
+				", because FROM names one entity; write FROM [" + sel.Entity +
+				"] to read the entities that point at it"
+		}
+		return &ParseError{Pos: a.pos, Found: found, Expected: expected, Err: ErrJoinNotSupported}
+	}
+	return nil
+}
+
+// parsePage reads `LIMIT n [OFFSET m]`.
+//
+// ⚠ Refused on a read of ONE entity: its attributes are a shape rather than a
+// sequence, so there is nothing to page and any answer would be arbitrary.
+func (p *parser) parsePage(sel *Read) (Page, error) {
+	var page Page
+
+	if t := p.peek(); t.Kind == KindKeyword && t.Text == "OFFSET" {
+		return page, p.errorAt(t, "keyword LIMIT before OFFSET, since an offset with no limit "+
+			"names a starting point and no page")
+	}
+
+	limit := p.peek()
+	if !p.acceptKeyword("LIMIT") {
+		return page, nil
+	}
+	if !sel.Inbound {
+		return page, p.errorAt(limit, "no paging clause, because a read of one entity returns "+
+			"its attributes and has nothing to page; write FROM ["+sel.Entity+"] to read a set")
+	}
+
+	n, err := p.parseBound("a row count that is zero or more")
+	if err != nil {
+		return page, err
+	}
+	page.Limit, page.Has = n, true
+
+	if p.acceptKeyword("OFFSET") {
+		off, err := p.parseBound("an offset that is zero or more")
+		if err != nil {
+			return page, err
+		}
+		page.Offset = off
+	}
+	return page, nil
+}
+
+// parseBound reads one non-negative integer bound.
+//
+// ⚠ A negative bound is refused rather than clamped. `LIMIT -1` means nothing,
+// and silently reading it as zero or as unlimited picks one of two opposite
+// answers on the caller's behalf.
+func (p *parser) parseBound(what string) (int64, error) {
+	t := p.peek()
+	if t.Kind != KindNumber {
+		return 0, p.errorAt(t, what)
+	}
+	p.next()
+	n, err := strconv.ParseInt(t.Text, 10, 64)
+	if err != nil || n < 0 {
+		return 0, &ParseError{Pos: t.Pos, Found: t.String(), Expected: what}
+	}
+	return n, nil
+}
+
+// parsePredicate reads one comparison, and reports the attribute AS WRITTEN so
+// the caller of this function can check its marker against the source.
+func (p *parser) parsePredicate() (*Predicate, attribute, error) {
+	on, err := p.parseAttribute()
+	if err != nil {
+		return nil, attribute{}, err
 	}
 	op := p.peek()
 	if op.Kind != KindPunct {
-		return nil, p.errorAt(op, "a comparison operator")
+		return nil, attribute{}, p.errorAt(op, "a comparison operator")
 	}
 	switch op.Text {
 	case "=", "==", "!=", "<", ">", "<=", ">=":
 	default:
-		return nil, p.errorAt(op, "a comparison operator")
+		return nil, attribute{}, p.errorAt(op, "a comparison operator")
 	}
 	p.next()
 
@@ -202,12 +366,12 @@ func (p *parser) parsePredicate() (*Predicate, error) {
 	switch val.Kind {
 	case KindNumber:
 		p.next()
-		return &Predicate{Attribute: attr, Op: op.Text, Value: val.Text, ValueIsNumber: true}, nil
+		return &Predicate{Attribute: on.name, Op: op.Text, Value: val.Text, ValueIsNumber: true}, on, nil
 	case KindString, KindIdent:
 		p.next()
-		return &Predicate{Attribute: attr, Op: op.Text, Value: val.Text}, nil
+		return &Predicate{Attribute: on.name, Op: op.Text, Value: val.Text}, on, nil
 	default:
-		return nil, p.errorAt(val, "a value")
+		return nil, attribute{}, p.errorAt(val, "a value")
 	}
 }
 

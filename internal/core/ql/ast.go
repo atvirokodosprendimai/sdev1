@@ -19,15 +19,45 @@ type Statement interface{ statement() }
 type Read struct {
 	// Attributes is the projection; empty means every attribute.
 	Attributes []string
-	// Entity names what is being read.
+	// Entity names what is being read: one entity, or — when Inbound is set —
+	// the entity whose referrers are being read.
 	Entity string
+	// Inbound reports that the source was written `FROM [Entity]`, so the
+	// statement reads the SET of entities carrying a reference to Entity rather
+	// than Entity itself (ADR-035).
+	//
+	// ★ One identifier, two questions. The brackets are a property of the source
+	// rather than part of the name, so the same entity is addressed either way.
+	Inbound bool
 	// Where is the optional filter.
 	Where *Predicate
+	// Page is the paging clause as WRITTEN. Only an inbound read may carry one.
+	Page Page
 	// Time is the qualifier as WRITTEN, before defaults.
 	Time TimeClause
 }
 
 func (*Read) statement() {}
+
+// Page is a `LIMIT n OFFSET m` clause exactly as written.
+//
+// ⚠ Has is not decoration. Without it the zero value reads as `LIMIT 0`, and
+// "no paging clause" and "no rows" are opposite answers — so conflating them
+// would make the emptier one the default for every statement that omits the
+// clause.
+//
+// ⚠ A page is over MEMBERS and not over rows, and it is applied AFTER a member
+// is dropped for missing an attribute the statement names. See ADR-035 rule 5:
+// paging before the drop gives unpredictable page sizes, and paging over rows
+// cuts a member in half.
+type Page struct {
+	// Limit is the maximum number of members returned.
+	Limit int64
+	// Offset is how many surviving members to skip first.
+	Offset int64
+	// Has reports that a clause was written at all.
+	Has bool
+}
 
 // Predicate is one comparison.
 type Predicate struct {

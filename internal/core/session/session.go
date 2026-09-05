@@ -286,6 +286,32 @@ func (m memoryReader) Load(_ context.Context, entity string, at ports.Snapshot) 
 	return out, nil
 }
 
+// Referrers returns the session's entities carrying a reference to target. It
+// implements [ports.Inbound] so a session can answer the statement it parses.
+//
+// ⚠ Its answers must agree with the leaf's, or the same statement means two
+// things depending on whether `--dir` was passed. Both are scans over datoms for
+// exactly that reason.
+func (m memoryReader) Referrers(_ context.Context, target string, at ports.Snapshot) ([]string, error) {
+	q := at.Query()
+	var out []string
+	for entity, datoms := range m.s.datoms {
+		for _, d := range datoms {
+			if !d.IsReference || string(d.Value) != target {
+				continue
+			}
+			if temporal.Visible(d.Valid.From, d.Valid.To, d.TxID, q) {
+				out = append(out, entity)
+				break
+			}
+		}
+	}
+	// ⚠ Map iteration is randomised, so this is sorted before it leaves. An
+	// unordered candidate list makes paging repeat and skip.
+	sort.Strings(out)
+	return out, nil
+}
+
 func (m memoryReader) Attributes(ctx context.Context, entity string, at ports.Snapshot) ([]string, error) {
 	visible, err := m.Load(ctx, entity, at)
 	if err != nil {

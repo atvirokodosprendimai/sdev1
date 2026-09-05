@@ -37,6 +37,37 @@
 // return — narrowing first leaves nothing to test against, and the query silently
 // returns nothing.
 //
+// # How an inbound READ is evaluated
+//
+// `READ ->a FROM [e]` reads the entities that point at e (ADR-035). The order of
+// operations is the decision, and each step is a rule:
+//
+//  1. Candidates are PROPOSED by [ports.Inbound]. A reader that is not one is
+//     REFUSED with [ErrNoInboundIndex] — never answered with an empty result.
+//  2. Each candidate is loaded and CONFIRMED to still carry an asserted
+//     reference to e at the snapshot.
+//  3. A member missing any attribute the statement names, or failing the
+//     comparison, is DROPPED entirely.
+//  4. Survivors are ordered by entity name, then paged.
+//
+// ⚠ Step 2 is not a formality. A candidate list is a proposal, and the one thing
+// an index that only appends gets wrong is a RETRACTED reference — it never
+// un-proposes. Because meaning rests on the datoms, a scan is a correct
+// implementation and an index is an optimisation that cannot change an answer.
+//
+// ⚠ Step 3 is an inner join, and it is deliberately the OPPOSITE of `OPTIONAL`
+// in a shape query, where an unmatched leg keeps the row with an unbound binding.
+// A shape query asks how much a subject RESEMBLES a pattern, so a partial match
+// is an answer; a table read asks which members SATISFY a condition, so it is not.
+//
+// ⚠ Step 4 pages over MEMBERS and comes after step 3. Paging over rows would cut
+// a member in half; paging before the drop would give unpredictable page sizes;
+// and paging without a total order repeats and skips while still looking like a
+// page.
+//
+// ⚠ It costs one scan plus one load per candidate. That N+1 is the price of
+// step 2 and is recorded rather than optimised away.
+//
 // # Two smaller rules, for the same reason as the big one
 //
 // ⚠ A comparison is NUMERIC only when the literal was written as a number. That

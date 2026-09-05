@@ -455,6 +455,16 @@ somebody will be tempted to add a liveness check "for safety".
 **Source:** ADR-011 (`docs/adr/ADR-011-query-language.md`), Out of Scope; and both
 its task files.
 
+**Partly answered.** ADR-027 (`docs/adr/ADR-027-evaluator.md`) built the
+evaluator. ADR-034 (`docs/adr/ADR-034-read-verb.md`) punted "reading a SET rather
+than one named entity" and "paging a result" here, and ADR-035
+(`docs/adr/ADR-035-inbound-read.md`) answered BOTH for the bounded case:
+`READ ->a FROM [e] WHERE … LIMIT n OFFSET m` reads the entities that point at `e`.
+
+★ It is answered for a set that an ADDRESS bounds. What remains open below is the
+unbounded case — "every entity" — which still needs a planner and routing, and
+which is a different problem rather than a bigger version of the same one.
+
 ADR-011 decides what a caller may WRITE and what it MEANS. Running it is a
 different job and it waits on storage.
 
@@ -479,6 +489,16 @@ believe.
 per leg, which is why time is a clause at all. A multi-hop traversal syntax is
 deferred, and whatever adds it must keep that property rather than quietly
 losing it in the recursion.
+
+**Still open after ADR-035:** a general JOIN — reading a member's attributes
+alongside the index entity's own. ⚠ ADR-035 rule 3 reserves the notation for it:
+inside `FROM [e]`, `->a` is a member's attribute and a bare `a` is REFUSED rather
+than treated as a synonym, precisely so that a join can be added later without
+changing what already-written statements mean.
+
+**Also still open:** more than one predicate on a read, boolean combination, and
+`ORDER BY`. ADR-035 fixes ONE member order — entity name — because paging is
+incoherent without a total order, not because that order is the interesting one.
 
 ### §21 — Nothing exports, samples, retains or watches the event stream
 
@@ -776,8 +796,20 @@ the symmetry is tempting. Here it would let a caller ASK for a tree assembled fr
 several instants — turning ADR-023's central defect from something implementable
 into something documented.
 
-**Inbound edges.** "What points at this" is a different index, not a different
-walk, and it interacts with §27's index work rather than with the traversal.
+**Inbound edges.** ~~"What points at this" is a different index, not a different
+walk, and it interacts with §27's index work rather than with the traversal.~~
+**Answered by ADR-035** (`docs/adr/ADR-035-inbound-read.md`): `READ ->a FROM [e]`
+reads the entities that point at `e`, with `WHERE`, `LIMIT` and `OFFSET`.
+
+★ The framing above was right and its conclusion was half wrong. It IS a
+different index — but the MEANING does not wait for one. ADR-035 defines
+membership as a property of the datoms and confirms every candidate against them,
+so a scan is a correct implementation and the index §27 will build is an
+optimisation that cannot change an answer.
+
+⚠ **What is still open here** is the reach, not the meaning: a referrer is a
+separate entity and lands on its own leaf, so a cluster-wide inbound read needs
+the routing §18 defers. `leafstore.Store.Referrers` answers for ONE leaf.
 
 **And what T1 could not prove.** The walk takes a `Resolver` and stores nothing,
 so nothing yet demonstrates that a real storage layer passes ONE snapshot rather
