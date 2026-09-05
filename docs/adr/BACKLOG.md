@@ -573,7 +573,7 @@ outlives its destruction, so a shredded subject stays readable on whichever node
 happened to hold it. Any cache needs an invalidation that is part of the shred
 rather than beside it, and "eventually" is not good enough for an erasure.
 
-### §18 — There is no transport, and nothing distributes a route
+### §18 — The response envelope is fixed; the transport and route distribution are open
 
 **Source:** ADR-008 (`docs/adr/ADR-008-prefix-routing.md`), Out of Scope; and both
 its task files.
@@ -590,6 +590,31 @@ ADR-019's composed chaos suite, and anything that measures a degraded read (§16
 ⚠ Whatever carries a redirect must make it structurally impossible to mistake
 for a successful answer. ADR-008 enforces that in Go's type system, and a wire
 format that flattens both into one message shape would give the property back.
+
+★ **ANSWERED by ADR-043** (`docs/adr/ADR-043-response-envelope.md`), and settled
+BEFORE the transport for the same reason ADR-032 settled the map's generation
+before callers existed: afterwards there are messages in flight and it is a
+migration rather than a decision.
+
+★ **The flattening is the DEFAULT outcome, not an unlikely one.** The ordinary
+design is a struct with a payload and an optional redirect field, and under every
+mainstream schema language a missing field decodes to a zero value — so a client
+that receives a redirect and reads the payload gets an empty SUCCESSFUL answer,
+with no error and nothing to notice. The stale route it was being sent away from
+has just served it a result.
+
+So: three outcomes and no others; a `wire.Redirect` with NO payload field —
+absent, not empty; and three refusals that make the shape hold against BYTES
+rather than only against a struct definition — an unknown outcome tag, an unknown
+version, and ⚠ **trailing bytes, which is the important one**, because "ignore
+what you do not understand" is precisely how a payload smuggles itself into a
+redirect. A redirect also carries its route's EPOCH, without which ADR-008 rule 5's
+loop protection is gone while the redirect still looks correct.
+
+⚠ **Still open, and this is the bulk of it:** framing, connection management,
+timeouts, and what a REQUEST looks like. None of those carries a correctness
+property that is lost by waiting, which is why the envelope went first and they did
+not. `wire.Encode`/`Decode` have no caller.
 
 **How a route reaches a node.** Gossip, a control plane, or something derived
 from the topology map — each has a different staleness profile, and ADR-008 is
