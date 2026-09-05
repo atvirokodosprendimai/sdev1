@@ -111,10 +111,17 @@ map — over real loopback sockets, in tests, not in prose. The decision it turn
 on: a request names the **key**, never the leaf, because a node handed a leaf it
 does not recognise cannot invert it and so cannot redirect.
 
-⚠ **That is one read, from one node.** Nothing distributed has still been *run*:
-there is no election, no replication, no route distribution, no authentication,
-and a write over the wire is refused by name. So the list below did not shrink —
-it stopped being blocked.
+★ **ADR-046 then made it safe to point at.** Mutual TLS, a principal taken from
+the client certificate, and ADR-033's grants enforced per request — the certificate
+says WHO, the present grant set says WHAT, and a retraction reaches a caller whose
+connection is already open. Connections are pooled, so a handshake is paid per
+connection rather than per read.
+
+⚠ **That is still one read, from one node.** Nothing distributed has been *run*:
+no election, no replication, no route distribution, and a write over the wire is
+refused by name. ⚠ And **nothing issues a certificate** — an operator must run a
+CA, an expired one stops a node, and revoking an identity means reissuing the CA.
+So the list below did not shrink; it stopped being blocked.
 
 Now that a transport exists:
 

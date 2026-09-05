@@ -308,8 +308,26 @@ records the cost that follows — the identifier space is a finite budget of 65,
 for the life of a deployment, and creating-then-destroying tenants consumes it
 permanently.
 
-**Authorization: answered.** Grants are datoms in reserved tenant `0000`,
-revocation is a retraction, and no grant means refused.
+**Authorization: answered, and now ENFORCED.** Grants are datoms in reserved
+tenant `0000`, revocation is a retraction, and no grant means refused.
+
+★ **ADR-046 closed the one thing ADR-033 deferred.** That record decided the rule
+completely and then stopped at a sentence — *"wiring authorization into statement
+execution needs a caller identity the language does not carry"* — so it was
+Accepted and unreachable from the day it was written. mTLS supplies the identity:
+the client certificate's Common Name is the `principal` argument `authz.Load` had
+always taken and nothing could fill. `authz` was consumed completely unchanged,
+which is the evidence that the identity was designed to fit rather than the rule
+bent to accept it.
+
+⚠ Two things about the enforcement worth carrying forward. The grant set is loaded
+at the NODE's clock, never at the caller's `Now` — a caller who chose the instant
+it is judged at could outlive its own revocation by naming a second before it, and
+that hole existed in the first implementation while every test passed. And a
+request naming tenant `0000` is refused BY NAME before any store is touched:
+`Set.Allow` refusing that tenant covers the authorization question and not the
+READ, so a node holding the grant leaf would otherwise serve the whole grant table
+down the ordinary path.
 
 ⚠ **Still open: ALLOCATION.** Who assigns an identifier to a new tenant, and under
 what authority — ADR-033 defers it to §19, because it is a cluster-wide decision
@@ -578,7 +596,7 @@ outlives its destruction, so a shredded subject stays readable on whichever node
 happened to hold it. Any cache needs an invalidation that is part of the shred
 rather than beside it, and "eventually" is not good enough for an erasure.
 
-### §18 — The transport is built; what surrounds it is not
+### §18 — The transport is built and authenticated; issuing the certificates is not
 
 **Source:** ADR-008 (`docs/adr/ADR-008-prefix-routing.md`), Out of Scope; and both
 its task files.
@@ -602,12 +620,29 @@ a hash), so it can neither answer nor redirect, and a stale client stays wrong.
 The key makes the leaf computable AT THE RECEIVER, which is why the WRONG node is
 the one that repairs the caller's map.
 
-⚠ **What ADR-045 deliberately did NOT build, and each is still open below or
-elsewhere:** authentication (nothing authenticates — anyone who can reach the
-socket reads any leaf the node holds), TLS, connection pooling and multiplexing
-(§16), retry and backoff, and a networked `sdev1-ql` (the CLI still uses a local
-session). ⚠ The first of those is the one that gates exposure: this must not face
-a network the operator does not own until it is closed.
+★ **ANSWERED by ADR-046** (`docs/adr/ADR-046-a-certificate-names-who.md`), which
+closed what ADR-045 deliberately left: **authentication, TLS and pooling**. They
+were deferred together and turned out to be one decision. mTLS is not protection
+*around* an auth mechanism, it IS the mechanism — a token on top would be a second
+identity that can disagree with the one the connection already proved. And TLS is
+what made pooling worth deciding, by turning a connection from a TCP handshake
+into asymmetric crypto per read.
+
+★★ **The decision: the certificate answers WHO, the present grant set answers
+WHAT.** Putting the capability in an X.509 extension is faster and is a real
+pattern, and it destroys ADR-033 — a certificate is valid until it expires, so
+revoking a capability carried in one needs a CRL, and until it runs the retraction
+that was meant to stop the caller reports success and changes nothing.
+
+⚠ **STILL OPEN, and this is now the thing that gates exposure: NOTHING ISSUES A
+CERTIFICATE.** ADR-046 consumes them and makes none — no issuance, no
+distribution, no rotation, no CRL and no OCSP. An operator must run a CA, an
+expired certificate stops a node with no reload path, and revoking an IDENTITY
+means reissuing the CA. Revoking AUTHORITY works today and is a retraction.
+
+⚠ Also still open: a networked `sdev1-ql` (the CLI still uses a local session),
+retry and backoff, and multiplexing — which ADR-046 rule 8 refuses on a
+failure-model argument that only §16 can price.
 
 ⚠ Whatever carries a redirect must make it structurally impossible to mistake
 for a successful answer. ADR-008 enforces that in Go's type system, and a wire

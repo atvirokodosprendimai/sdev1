@@ -18,6 +18,13 @@ import (
 // test can make it deliberately WRONG.
 func client(t *testing.T, seed routing.Route, budget int) *serve.Client {
 	t.Helper()
+	return clientWithTLS(t, seed, budget, sharedCA.issue(t, "test-reader"))
+}
+
+// clientWithTLS is client with the certificate named — which is also the
+// PRINCIPAL, so any test about who is calling uses this one.
+func clientWithTLS(t *testing.T, seed routing.Route, budget int, conf serve.TLSConfig) *serve.Client {
+	t.Helper()
 
 	c, err := serve.NewClient(serve.ClientOptions{
 		Seed:         seed,
@@ -26,12 +33,20 @@ func client(t *testing.T, seed routing.Route, budget int) *serve.Client {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 		MaxFrame:     wire.MaxFrame,
+		TLS:          conf,
+		Pool:         PoolBoundsForTest,
 	})
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
+	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
+
+// PoolBoundsForTest is what an ordinary test uses when the pool is not what it is
+// about. ⚠ The timeout is long enough that nothing ages out mid-test; the tests
+// that are ABOUT ageing inject a clock instead of shortening it.
+var PoolBoundsForTest = serve.PoolBounds{MaxIdlePerNode: 4, IdleTimeout: time.Minute}
 
 // TestAStaleClientIsRedirectedAndRepaired is ADR-045's falsifier.
 //

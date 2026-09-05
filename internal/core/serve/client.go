@@ -1,6 +1,8 @@
 package serve
 
 import (
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -64,13 +66,37 @@ type ClientOptions struct {
 
 	// MaxFrame bounds a frame in either direction. See [wire.MaxFrame].
 	MaxFrame int
+
+	// TLS is how this caller proves who it is and checks the node it reached.
+	//
+	// ★ The certificate's Common Name is the PRINCIPAL a node reads the grant
+	// set for, so this is not merely confidentiality — it is the caller's
+	// identity, and there is no other way to supply one.
+	TLS TLSConfig
+
+	// Pool bounds what may be kept between reads.
+	//
+	// ★ Required, because TLS made a connection expensive enough that whether one
+	// is kept is a decision rather than a detail — and an unbounded pool looks
+	// exactly like an unconfigured one until it runs a process out of
+	// descriptors.
+	Pool PoolBounds
+
+	// Now is injectable so a test can age an idle connection without sleeping.
+	// Nil takes the wall clock.
+	Now func() time.Time
 }
 
-// Client is one caller's view of a cluster: a route cache and a socket.
+// Client is one caller's view of a cluster: a route cache, a pool and a socket.
 type Client struct {
 	cache  *routing.Cache
 	budget int
 	opts   ClientOptions
+	// tls is built once at construction rather than per dial, because a parsed
+	// key pair and a certificate pool are the expensive parts and neither varies
+	// per connection.
+	tls  *tls.Config
+	pool *Pool
 }
 
 // NewClient seeds a cache and validates the options.
@@ -83,6 +109,14 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		return nil, fmt.Errorf("%w: dial %v, read %v, write %v, frame %d",
 			ErrNoTimeout, opts.DialTimeout, opts.ReadTimeout, opts.WriteTimeout, opts.MaxFrame)
 	}
+	config, err := opts.TLS.Client()
+	if err != nil {
+		return nil, err
+	}
+	pool, err := NewPool(opts.Pool, opts.Now)
+	if err != nil {
+		return nil, err
+	}
 	cache, err := routing.NewCache(opts.Seed)
 	if err != nil {
 		return nil, fmt.Errorf("serve: seeding the route cache: %w", err)
@@ -91,8 +125,23 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	if budget < 1 {
 		budget = routing.DefaultHopBudget
 	}
-	return &Client{cache: cache, budget: budget, opts: opts}, nil
+	return &Client{cache: cache, budget: budget, opts: opts, tls: config, pool: pool}, nil
 }
+
+// Idle is how many warm connections this client holds for a node.
+//
+// ★ An ordinary pool gauge, and the only way to see the difference between a
+// connection that was DISCARDED after a failed exchange and one that was quietly
+// put back. A returned-but-broken connection is invisible to every assertion
+// about content: it sits in the pool looking exactly like a good one until some
+// later read draws it.
+func (c *Client) Idle(node string) int { return c.pool.Len(node) }
+
+// Close releases every pooled connection.
+//
+// ⚠ A client that is discarded without this leaks one descriptor per warm
+// connection, and the leak is invisible until a process runs out.
+func (c *Client) Close() error { return c.pool.Close() }
 
 // Route is what the client currently believes about a key, which is how a caller
 // can see that a redirect repaired it.
@@ -109,7 +158,21 @@ func (c *Client) Route(k addr.Key) (routing.Route, error) { return c.cache.Looku
 // own statement, so an answer arrives on the hop that resolved the key rather
 // than on one more.
 func (c *Client) Serve(node string, k addr.Key) (routing.Redirect, bool) {
-	return (&exchange{client: c, statement: probeStatement}).Serve(node, k)
+	return (&exchange{client: c, statement: probeStatement, now: c.instant()}).Serve(node, k)
+}
+
+// instant is the business moment a probe carries.
+//
+// ⚠ It must be a REAL instant. A probe sent with zero was harmless while nothing
+// authorized — and became a refusal for every caller the moment ADR-046 landed,
+// because the node reads the grant set at the instant it is given and no grant is
+// valid at the epoch. A bare `Serve` then reported every node as "served", since
+// a refusal means the node HELD the leaf.
+func (c *Client) instant() int64 {
+	if c.opts.Now != nil {
+		return c.opts.Now().Unix()
+	}
+	return time.Now().Unix()
 }
 
 // Read resolves a key and returns what the node holding it answered.
@@ -200,26 +263,96 @@ func (e *exchange) Serve(node string, k addr.Key) (routing.Redirect, bool) {
 	}
 }
 
-// roundTrip is the whole of the wire protocol on the client side: dial, one
-// framed request, one framed response, close.
+// roundTrip performs one exchange, reusing a pooled connection when there is one.
+//
+// ★★ THE CONNECTION IS RETURNED TO THE POOL AT EXACTLY ONE PLACE: after the
+// response has been fully read AND successfully decoded. Every other exit closes
+// it. A connection whose stream position is unknown cannot be resynchronised —
+// the next thing read from it would be a length prefix taken from the middle of
+// something else, and that is the one number ADR-045 bounds precisely because a
+// stranger chooses it.
+//
+// ⚠ A decode failure closes the connection even though the transport read
+// succeeded. That is the case worth stating: it reads like a caller-side problem
+// and it is not, because "these bytes were not what was expected" is exactly the
+// same information as "where the next frame starts is unknown".
 func (e *exchange) roundTrip(node string, k addr.Key) (wire.Response, error) {
-	opts := e.client.opts
-
-	conn, err := net.DialTimeout("tcp", node, opts.DialTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("dialling: %w", err)
-	}
-	defer func() { _ = conn.Close() }()
-
 	payload, err := wire.EncodeRequest(wire.Request{Key: k, Statement: e.statement, Now: e.now})
 	if err != nil {
 		return nil, err
 	}
-	if err := conn.SetWriteDeadline(time.Now().Add(opts.WriteTimeout)); err != nil {
+
+	// ⚠ ONE retry, and only here. A pooled connection may have been closed by
+	// the far end while it was idle, with no signal until the write — so a
+	// failure at the FIRST WRITE on a REUSED connection is the pool admitting
+	// its own cache went stale, not a cluster policy. It must never extend to a
+	// failure after the request was sent: that request may already have been
+	// served, and re-sending it would be this transport inventing a retry
+	// policy that `routing.Resolve` alone is allowed to own.
+	conn, reused, err := e.connect(node)
+	if err != nil {
 		return nil, err
 	}
+	resp, err := e.on(conn, node, payload)
+	if err != nil && reused && errors.Is(err, errWriteFailed) {
+		conn, _, err = e.dial(node)
+		if err != nil {
+			return nil, err
+		}
+		resp, err = e.on(conn, node, payload)
+	}
+	return resp, err
+}
+
+// errWriteFailed marks the one failure a stale pooled connection is allowed to
+// be retried after, because nothing can have happened yet.
+var errWriteFailed = errors.New("serve: the request could not be sent")
+
+// connect returns a pooled connection when one is waiting, and dials otherwise.
+func (e *exchange) connect(node string) (net.Conn, bool, error) {
+	if conn := e.client.pool.Get(node); conn != nil {
+		return conn, true, nil
+	}
+	return e.dial(node)
+}
+
+// dial opens a new authenticated connection.
+//
+// ⚠ A TLS dialler, so the handshake is inside the dial timeout. Dialling in the
+// clear and upgrading afterwards would leave the handshake unbounded, which is a
+// stranger holding a goroutine again by a different route.
+func (e *exchange) dial(node string) (net.Conn, bool, error) {
+	opts := e.client.opts
+
+	dialer := &tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: opts.DialTimeout},
+		Config:    e.client.tls,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), opts.DialTimeout)
+	defer cancel()
+
+	conn, err := dialer.DialContext(ctx, "tcp", node)
+	if err != nil {
+		return nil, false, fmt.Errorf("dialling: %w", err)
+	}
+	return conn, false, nil
+}
+
+// on runs one exchange over a connection it either keeps or closes.
+func (e *exchange) on(conn net.Conn, node string, payload []byte) (wire.Response, error) {
+	opts := e.client.opts
+	kept := false
+	defer func() {
+		if !kept {
+			_ = conn.Close()
+		}
+	}()
+
+	if err := conn.SetWriteDeadline(time.Now().Add(opts.WriteTimeout)); err != nil {
+		return nil, fmt.Errorf("%w: %v", errWriteFailed, err)
+	}
 	if err := wire.WriteFrame(conn, payload, opts.MaxFrame); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", errWriteFailed, err)
 	}
 
 	if err := conn.SetReadDeadline(time.Now().Add(opts.ReadTimeout)); err != nil {
@@ -229,5 +362,14 @@ func (e *exchange) roundTrip(node string, k addr.Key) (wire.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	return wire.Decode(body)
+	resp, err := wire.Decode(body)
+	if err != nil {
+		return nil, err
+	}
+
+	// ★ HERE, and nowhere else. A complete frame, fully decoded, so the stream
+	// is known to be at a boundary.
+	kept = true
+	e.client.pool.Put(node, conn)
+	return resp, nil
 }

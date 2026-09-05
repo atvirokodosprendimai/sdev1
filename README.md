@@ -95,9 +95,10 @@ to write into a different tenant's subtree.
 
 **Short version: you can write facts, read them back at any instant, filter,
 search, traverse links, keep all of it on a disk across restarts, and now READ
-ONE OVER A SOCKET — from a node that redirects you if it is not the one holding
-what you asked for. What is missing is a networked write, a planner, and
-everything that needs one.**
+ONE OVER AN AUTHENTICATED SOCKET — from a node that checks your certificate,
+checks your grant, and redirects you if it is not the one holding what you asked
+for. What is missing is a networked write, a planner, a way to issue the
+certificates, and everything that needs one.**
 
 | | Status | What that means |
 |---|---|---|
@@ -116,9 +117,12 @@ everything that needs one.**
 | A fact you `ASSERT` surviving a restart | **runs** | `sdev1-ql --dir ./leaf`, twice. A leaf is a directory of segments; a read merges them by the datoms' own transaction identifiers, so ⚠ **renaming the files does not change the answer**. |
 | Reading a stored fact back | **runs** | `READ` evaluates against any `ports.Reader`, so the same statement answers from memory or from a leaf, costing one entity read either way. |
 | A read over a network | **runs** | `cmd/sdev1-serve` puts a leaf behind a socket and `serve.Client` reads it. ★ A request names a **key**, never a leaf, so a node that does not hold it computes where it went and redirects — and the client repairs its own map from the node that was wrong. |
+| Mutual TLS, and a caller with a name | **runs** | Both ends present a certificate signed by an authority the operator declares — never the host's trust store — at TLS 1.3, and a client certificate is required rather than requested. The certificate's Common Name is the **principal**. |
+| Authorization on the served path | **runs** | ADR-033's grants, which were Accepted and unreachable until something could supply a caller identity. ★★ **The certificate says WHO; the present grant set says WHAT.** Revocation is a retraction and reaches a caller whose certificate and connection are both still live. A node with no grant source refuses every read. |
+| Connection pooling | **runs** | One request still in flight per connection, and the connection kept between reads — so a handshake is paid per connection rather than per read. ⚠ A connection is returned to the pool only after a complete, decoded exchange; any error discards it. |
 | A write over a network | ❌ **refused by name** | Not an empty answer, which a client would read as "it ran and matched nothing". There is no leader to fence one (ADR-009) and no durability tier to commit it at (ADR-020). |
-| Authentication, TLS, pooling | ❌ | ⚠ **Nothing authenticates.** Anyone who can reach the socket reads any leaf that node holds. One request per connection, closed after. Do not expose this to a network you do not own. |
-| A cluster that places or replicates | ❌ | Routes are configured per node with `--route`; nothing distributes them, nothing elects, nothing replicates. |
+| Issuing, rotating or revoking a CERTIFICATE | ❌ | ⚠ **An operator must run a CA.** This consumes certificates and makes none: no issuance, no rotation, no CRL, no OCSP. Revoking a principal's **authority** works today and is a retraction; revoking its **identity** means reissuing the CA. |
+| A cluster that places or replicates | ❌ | Routes are configured per node with `--route`; nothing distributes them, nothing elects, nothing replicates. Each node reads a local grant leaf, so its view is as fresh as whatever put it there. |
 
 → **[How to query, with the full grammar and worked examples](docs/QUERY-LANGUAGE.md)**
 → **[What is next, ordered by what blocks what](TODO.md)**
@@ -128,18 +132,19 @@ everything that needs one.**
 Read this before anything else on the page.
 
 **The decisions are made and recorded. Much of the machinery that would execute
-them is not built.** Forty-five decision records are Accepted, each governs real
+them is not built.** Forty-six decision records are Accepted, each governs real
 Go code, and all 36 packages that carry tests pass under the race detector. A
-fact survives a process, and a read now crosses a network — but a WRITE does not,
-so **you can start a server and read a fact through it, and you cannot yet store
+fact survives a process, and a read now crosses an authenticated network — but a
+WRITE does not, so **you can start a server and read a fact through it as a named
+principal, and you cannot yet store one through it.**
 one through it.**
 
 | | |
 |---|---|
-| **Runs today** | 38 Go packages, 445 tests, race-clean — 36 packages carry tests, and the two that do not are the commands, each proved by RUNNING the built binary rather than by compiling it. ★ `cmd/sdev1-serve` is started **twice, as two real processes**, and a redirect is followed between them: a build would have proved only that `main` compiles, and the flag names, `--leaf` parsing and `--route` spelling could each have been wrong and still built clean. Three binaries: `sdev1-addr`, `sdev1-ql` and `sdev1-serve`. |
-| **Exists now** | A storage engine, an evaluator, and a transport: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, a `READ` that reads one entity out of it and filters — and a socket that serves that read or redirects to the node that can. |
-| **Does not exist** | A networked write, a query planner, a similarity metric, authentication, a running cluster that places or replicates anything. |
-| **Honestly measured** | 323 mutants killed across the corpus, 23 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Seven found claims that nothing was holding: one was a real bug, and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
+| **Runs today** | 38 Go packages, 460 tests, race-clean — 36 packages carry tests, and the two that do not are the commands, each proved by RUNNING the built binary rather than by compiling it. ★ `cmd/sdev1-serve` is started **twice, as two real processes**, and a redirect is followed between them: a build would have proved only that `main` compiles, and the flag names, `--leaf` parsing and `--route` spelling could each have been wrong and still built clean. Three binaries: `sdev1-addr`, `sdev1-ql` and `sdev1-serve`. |
+| **Exists now** | A storage engine, an evaluator, and an authenticated transport: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, a `READ` that reads one entity out of it and filters — and a socket that checks who is asking, checks what they may read, then serves or redirects to the node that can. |
+| **Does not exist** | A networked write, a query planner, a similarity metric, certificate issuance or rotation, a running cluster that places or replicates anything. |
+| **Honestly measured** | 332 mutants killed across the corpus, 24 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Eight found claims that nothing was holding: one was a real bug, one was a security property (a certificate pool seeded from the host trust store, which no handshake test could see), and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are

@@ -2,10 +2,12 @@ package serve
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
@@ -75,9 +77,36 @@ type Options struct {
 	// MaxFrame bounds a frame in either direction. See [wire.MaxFrame] for a
 	// value an operator may adopt.
 	MaxFrame int
+
+	// TLS is how this node proves who it is and checks who is calling.
+	//
+	// ⚠ Required. There is no unencrypted mode, because a transport that can be
+	// configured without one has a state in which it silently is not.
+	TLS TLSConfig
+
+	// Grants is where this node reads ADR-033's grant datoms — the reserved
+	// tenant `0000`, held locally.
+	//
+	// ⚠ Required, and a node without one serves NOTHING. ADR-033 rule 5's
+	// dangerous reading is that an unconfigured grant store is a special case;
+	// it is the case where a system fails open.
+	//
+	// ★ Local rather than fetched over this same transport, which would be
+	// circular: that read would itself need authorizing, and the node it asked
+	// would need to authorize it. Replicating the grant leaf is BACKLOG.md §19's.
+	Grants ports.Reader
+
+	// Now is this NODE's business clock, in Unix seconds, and it is what the
+	// grant set is loaded at.
+	//
+	// ⚠ Injectable only so a test can grant and revoke at chosen moments. It is
+	// never `wire.Request.Now`: that value is the caller's, and a caller who
+	// chose the moment it is judged at could outlive its own revocation by
+	// naming a second before it. Nil takes the wall clock.
+	Now func() int64
 }
 
-// Server answers one request per connection.
+// Server answers requests on the connections it accepts.
 type Server struct {
 	opts     Options
 	listener net.Listener
@@ -90,7 +119,20 @@ type Server struct {
 	// failed Accept is an ordinary shutdown rather than a fault.
 	closing chan struct{}
 	once    sync.Once
+
+	// accepted counts connections, which is the same thing as counting
+	// handshakes. ★ It is the only honest measure of whether a client's pool is
+	// working: the pool's own length would look correct for a pool that stores
+	// connections and hands them out to nobody.
+	accepted atomic.Int64
 }
+
+// Accepted is how many connections this node has accepted since it started.
+//
+// ★ One accept is one TLS handshake, which after ADR-046 is asymmetric crypto on
+// both sides — so this is the number a client's connection pool exists to hold
+// down, and the number that says whether it does.
+func (s *Server) Accepted() int64 { return s.accepted.Load() }
 
 // NewServer validates the options and binds the listener.
 //
@@ -112,12 +154,41 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Table == nil {
 		return nil, errors.New("serve: a node must be given a routing table")
 	}
+	if opts.Grants == nil {
+		return nil, ErrNoGrants
+	}
 
-	l, err := net.Listen("tcp", opts.Addr)
+	config, err := opts.TLS.Server()
+	if err != nil {
+		return nil, err
+	}
+
+	// ★ The listener is WRAPPED, so there is no accept path that skips the
+	// handshake. A server that dropped to plaintext under some condition would
+	// have that condition as its weakest point; there is no such condition.
+	l, err := tls.Listen("tcp", opts.Addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("serve: listening on %q: %w", opts.Addr, err)
 	}
 	return &Server{opts: opts, listener: l, closing: make(chan struct{})}, nil
+}
+
+// principalOf completes the handshake and reads who is calling.
+//
+// ⚠ The handshake is forced HERE rather than left to the first read. TLS 1.3
+// finishes lazily, so a connection that has not been read from yet has no
+// verified chain — and a principal taken from it would be empty for a caller
+// that is perfectly well authenticated.
+func (s *Server) principalOf(conn net.Conn) (string, error) {
+	secure, ok := conn.(*tls.Conn)
+	if !ok {
+		return "", fmt.Errorf("%w: the connection is not a TLS connection", ErrNoPrincipal)
+	}
+	if err := secure.Handshake(); err != nil {
+		return "", fmt.Errorf("serve: handshake: %w", err)
+	}
+	state := secure.ConnectionState()
+	return PrincipalOf(&state)
 }
 
 // Addr is where the server is actually listening, which is what a test needs
@@ -139,6 +210,7 @@ func (s *Server) Serve(ctx context.Context) error {
 				return fmt.Errorf("serve: accepting: %w", err)
 			}
 		}
+		s.accepted.Add(1)
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
@@ -158,41 +230,79 @@ func (s *Server) Close() error {
 	return err
 }
 
-// handle runs exactly one exchange and closes the connection.
+// handle serves exchanges on one connection until it ends.
 //
-// ⚠ The deadlines go on the CONNECTION. A listener deadline bounds Accept, and
-// the goroutine a stranger can pin forever is this one.
+// ⚠ **A LOOP, not one exchange** — this is where ADR-046 amends ADR-045 rule 7.
+// One request is still in FLIGHT at a time, which is what keeps correlation
+// identifiers unnecessary; what changed is that the connection is not thrown
+// away afterwards. A server that closed after one would make the client's pool
+// worse than useless: the client would keep a connection its peer had already
+// hung up, and pay a failed write plus a redial on every second read.
+//
+// ⚠ The deadlines go on the CONNECTION and are RESET PER EXCHANGE. A listener
+// deadline bounds Accept, and the goroutine a stranger can pin forever is this
+// one — a deadline set once before the loop would let a peer hold it for exactly
+// as long as the first read allowed, no matter how many requests followed.
 func (s *Server) handle(ctx context.Context, conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 
+	// ★ Who is calling, once per connection rather than once per request. The
+	// handshake has already proved a chain to the declared authority — this is
+	// the second half of rule 1, that a verified chain naming NOBODY is refused
+	// rather than admitted as an anonymous caller.
+	//
+	// ⚠ Nothing is sent back, for the same reason a bad frame gets no reply: a
+	// peer that cannot name itself has not shown it speaks this protocol.
 	if err := conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout)); err != nil {
 		return
 	}
-	payload, err := wire.ReadFrame(conn, s.opts.MaxFrame)
+	principal, err := s.principalOf(conn)
 	if err != nil {
-		// ⚠ Nothing is sent back. A frame that could not be read may not have
-		// come from something that speaks this protocol at all, and a reply
-		// would be a reflection an unbounded number of strangers can aim.
 		return
 	}
-	req, err := wire.DecodeRequest(payload)
-	if err != nil {
-		s.reply(conn, &wire.Refusal{Reason: fmt.Sprintf("serve: %v", err)})
-		return
+
+	for {
+		// ⚠ Reset before EVERY read. An idle pooled connection is supposed to sit
+		// here waiting, and the deadline is what stops it sitting forever.
+		if err := conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout)); err != nil {
+			return
+		}
+		payload, err := wire.ReadFrame(conn, s.opts.MaxFrame)
+		if err != nil {
+			// ⚠ Nothing is sent back. A frame that could not be read may not
+			// have come from something that speaks this protocol at all, and a
+			// reply would be a reflection an unbounded number of strangers can
+			// aim. An ordinary close arrives here too, which is how the loop
+			// ends.
+			return
+		}
+		req, err := wire.DecodeRequest(payload)
+		if err != nil {
+			// ★ The refusal is sent and the connection ENDS. The frame was
+			// well-formed, so the stream is at a boundary and could be reused —
+			// but a peer that sent an undecodable request has disagreed with us
+			// about the protocol, and continuing assumes the disagreement was
+			// isolated.
+			s.reply(conn, &wire.Refusal{Reason: fmt.Sprintf("serve: %v", err)})
+			return
+		}
+		if !s.reply(conn, s.answer(ctx, principal, req)) {
+			return
+		}
 	}
-	s.reply(conn, s.answer(ctx, req))
 }
 
-// reply writes one response under the write deadline.
-func (s *Server) reply(conn net.Conn, resp wire.Response) {
+// reply writes one response under the write deadline, and reports whether the
+// connection is still usable.
+func (s *Server) reply(conn net.Conn, resp wire.Response) bool {
 	if err := conn.SetWriteDeadline(time.Now().Add(s.opts.WriteTimeout)); err != nil {
-		return
+		return false
 	}
 	body, err := wire.Encode(resp)
 	if err != nil {
-		return
+		return false
 	}
-	_ = wire.WriteFrame(conn, body, s.opts.MaxFrame)
+	return wire.WriteFrame(conn, body, s.opts.MaxFrame) == nil
 }
 
 // answer decides what one request gets, and is the whole of ADR-045 rule 2.
@@ -200,7 +310,18 @@ func (s *Server) reply(conn net.Conn, resp wire.Response) {
 // ★★ THE KEY IS DESCENDED AGAINST THIS NODE'S OWN LEAF. The caller's belief about
 // placement is not an input and is not even representable in a request — which is
 // exactly why a node that does not hold the key can still say where it went.
-func (s *Server) answer(ctx context.Context, req wire.Request) wire.Response {
+func (s *Server) answer(ctx context.Context, principal string, req wire.Request) wire.Response {
+	// ★★ AUTHORIZE FIRST, and against the PRESENT grant set. The request's own
+	// `Now` reaches the evaluator and never this decision — ADR-033 rule 3 is
+	// that a query `AS OF` last March is authorized by TODAY's grants, or else
+	// revoking access leaves the revoked party reading last year forever.
+	//
+	// ⚠ Before the redirect too, and deliberately: a node that redirected an
+	// unauthorized caller would confirm which node holds a tenant's leaf, which
+	// is a small leak but a free one to avoid.
+	if err := s.permits(ctx, principal, req.Key); err != nil {
+		return &wire.Refusal{Reason: err.Error()}
+	}
 	leaf, err := addr.Descend(req.Key, s.opts.Leaf.Depth)
 	if err != nil {
 		return &wire.Refusal{Reason: fmt.Sprintf("serve: descending the key: %v", err)}
