@@ -51,9 +51,36 @@
 // fix placement, and a stale epoch means this writer lost the leaf and should
 // stop.
 //
+// # The window between the promise and the disk
+//
+// Acknowledging on N memory replicas is the whole performance argument, and it
+// leaves an exposure: data somebody was promised and that is not yet on stable
+// storage. [Meter] measures it (ADR-041).
+//
+// ⚠ It is a DIFFERENT window from [Gate.Pending], which counts entries written
+// and not yet committed — data nobody was promised. Reporting one as the other
+// says a busy node is exposed, or that an exposed one is calm.
+//
+// ★ The number reported is the PEAK as well as the present value.
+// docs/adr/BACKLOG.md §23 names the trap — stating the window as an average —
+// because the exposure correlates with load, so it is largest exactly when a
+// correlated failure is most likely. The instantaneous reading has the same
+// defect one step removed: asked after a burst it reports the calm.
+//
+// ⚠ Which only means anything because a flush is PARTIAL. Entries committed while
+// a flush runs survive it, so the window can FALL without emptying — and a window
+// that only ever grew until it hit zero would make the peak identical to the
+// present value, a safeguard that cannot fail because it cannot differ.
+//
+// ⚠ A bound needs BOTH an age and a size, unlike the sealing policy next door:
+// size-only leaves a quiet tenant unbounded in time, age-only leaves a busy one
+// unbounded in bytes. And exceeding it asks for a flush rather than refusing a
+// write — the node is behind, not unsafe.
+//
 // # What this package does not do
 //
-// It replicates nothing — there is no transport — and it flushes nothing. It does
+// It replicates nothing — there is no transport — and it flushes nothing, so the
+// window's closing edge is supplied by a caller that does not exist yet. It does
 // not decide how many copies are wanted, which is a durability policy's business;
 // it says what each of those copies must have DONE, which is a different
 // question. And it does not decide who may write: it only declines to count an
