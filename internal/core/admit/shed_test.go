@@ -121,10 +121,14 @@ func TestWithdrawalStopsOnlyNewReadWork(t *testing.T) {
 		t.Fatal("the node did not withdraw")
 	}
 
-	if c.Admits(KindRead) {
-		t.Error("a withdrawn node still admits reads")
+	if c.Admits(KindRead, ClassUser) {
+		t.Error("a withdrawn node still admits user reads")
 	}
-	if !c.Admits(KindWrite) {
+	if !c.Admits(KindRead, ClassRepair) {
+		t.Error("a withdrawn node stopped admitting repair reads; shedding one cancels the " +
+			"work rather than re-routing it, because only this node holds those fragments")
+	}
+	if !c.Admits(KindWrite, ClassUser) {
 		t.Error("a withdrawn node stopped admitting writes")
 	}
 	if got := c.Budget(KindWrite).Utilisation(); got != writeBefore {
@@ -148,7 +152,7 @@ func TestWriteBudgetNeverWithdraws(t *testing.T) {
 			t.Fatalf("Observe(write, %v): %v", rate, err)
 		}
 		c.Decide()
-		if !c.Admits(KindWrite) {
+		if !c.Admits(KindWrite, ClassUser) {
 			t.Fatalf("at a write rate of %v the node stopped admitting writes; a leaf has one "+
 				"writer, so a shed write is an outage rather than a re-route", rate)
 		}

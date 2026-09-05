@@ -155,14 +155,27 @@ func (c *Controller) Observe(k Kind, bitsPerSecond float64) error {
 	return nil
 }
 
-// Admits reports whether this kind is currently taking work.
+// Admits reports whether this kind of work, for this purpose, is currently
+// taken.
 //
 // ★ A write ALWAYS admits. A leaf has one writer, so refusing a write here would
 // be an outage rather than a re-route — and a read burst must never be able to
 // cause one.
-func (c *Controller) Admits(k Kind) bool {
+//
+// ⚠ A withdrawn node still admits [ClassRepair] reads. Shedding one would not
+// re-route the work to a peer, because only this node holds the fragments it
+// wants — it would CANCEL it, which is the same thing that makes a shed write an
+// outage. See [Class] for the argument; it is this package's own, one level down.
+//
+// ⚠ The class has no default, deliberately. A caller must say what the read is
+// FOR, because an optional class is an ignorable one — and the case that gets
+// ignored is the user read that should have been shed.
+func (c *Controller) Admits(k Kind, class Class) bool {
 	if k == KindWrite {
 		return true
 	}
-	return c.state == StateJoined
+	if c.state == StateJoined {
+		return true
+	}
+	return !class.sheddable()
 }

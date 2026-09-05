@@ -582,16 +582,45 @@ to withdraw because its peers already have is a node that keeps taking work it
 cannot serve, which is the error-returning behaviour ADR-015 rejected, arrived at
 by a different route.
 
-**Which reads matter more.** A repair read and a user query compete for the same
-budget, and shedding treats them alike. That is wrong in both directions: shedding
-the repair prolongs the degradation that is causing the load, and shedding the
-user query is what the mechanism is for. ⚠ And §16 is the reason this is not
-merely a preference — a degraded read costs `k` fragment fetches, so the reads a
-repair is trying to make unnecessary are also the expensive ones.
+★ **THE TRAP IS ANSWERED BY ADR-039; THE POLICY IS STILL OPEN, AND SEPARATING
+THEM IS WHAT MADE THE FIRST HALF DECIDABLE.** "Should I withdraw" is a question
+about THIS node; "what do we do when everyone has" is a question about the fleet.
+Conflating them is the only way to write the trap. So `Controller.Decide` takes no
+peer state — the signature is the enforcement — and `admit.Fleet` holds replica
+STATES rather than controllers, so there is nothing to reach back through. The
+all-withdrawn condition is REPORTED, as an ADR-038 obligation naming the replicas,
+and answered by nobody.
+
+⚠ **Still open: which of the three responses is right.** ADR-039 rule 3 defers it
+here deliberately, and the obligation is what makes the choice measurable rather
+than argued.
+
+**Which reads matter more.** ~~A repair read and a user query compete for the same
+budget, and shedding treats them alike.~~ **Answered by ADR-039**
+(`docs/adr/ADR-039-shed-what-can-be-rerouted.md`): a withdrawn node refuses
+`ClassUser` reads and keeps serving `ClassRepair` reads.
+
+★ **And ADR-015 already contained the ordering principle — it is ELASTICITY, not
+importance.** ADR-015 sheds reads and never writes because any replica can serve a
+read, so shedding it RE-ROUTES the work, while a leaf has one writer so a shed
+write is an outage. One level down: a user read is elastic, and a repair read is
+not, because it reads the fragments THIS node holds. Shedding a repair read does
+not move the work — it cancels it. §16's cost argument points the same way and is
+corroboration rather than the reason.
+
+★ Three tiers — writes always, repair while withdrawn, user only while joined —
+out of ONE budget, one utilisation and one state. The constraint below is
+honoured: the class is an ORDER, not a second budget dimension, and no per-class
+ceiling exists.
 
 Whatever closes this must not grow a second budget dimension per class; ADR-015
 refuses a third budget kind deliberately, and priority within a budget is a
 different mechanism from a budget per priority.
+
+⚠ **Still open, and it ships open: the starvation risk.** A node saturated by
+repair work stays withdrawn and keeps refusing user reads. What bounds that is a
+bound on repair traffic — §3, still open. ADR-039 rule 7 names §3 as the owner
+rather than inventing a cap nobody can justify.
 
 ### §23 — Nothing bounds how long acknowledged data stays unflushed
 

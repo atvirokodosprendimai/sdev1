@@ -57,12 +57,12 @@ func TestReadSheddingNeverStopsWrites(t *testing.T) {
 		t.Errorf("read load changed write utilisation from %v to %v — the budgets share state, "+
 			"and a read storm can therefore stall a leaf's ingest", writeBefore, got)
 	}
-	if !c.Admits(KindWrite) {
+	if !c.Admits(KindWrite, ClassUser) {
 		t.Fatal("writes stopped admitting because reads saturated the node; a shed write has " +
 			"nowhere to go, so this is an outage rather than a re-route")
 	}
-	if c.Admits(KindRead) {
-		t.Error("reads still admit although the node withdrew")
+	if c.Admits(KindRead, ClassUser) {
+		t.Error("user reads still admit although the node withdrew")
 	}
 
 	// Even with the write budget itself over its own ceiling, writes admit —
@@ -70,7 +70,7 @@ func TestReadSheddingNeverStopsWrites(t *testing.T) {
 	if err := c.Observe(KindWrite, 9_000_000_000); err != nil {
 		t.Fatalf("Observe(write): %v", err)
 	}
-	if _, _ = c.Decide(); !c.Admits(KindWrite) {
+	if _, _ = c.Decide(); !c.Admits(KindWrite, ClassUser) {
 		t.Error("a write was refused for load; refusing a write is a durability decision made " +
 			"elsewhere, and conflating the two makes a busy node look unsafe")
 	}

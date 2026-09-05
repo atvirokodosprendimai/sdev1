@@ -46,6 +46,13 @@ const (
 	// rejoin threshold. Paired with the withdrawal, these two are how flapping
 	// would show up if the hysteresis band were ever too narrow.
 	KindQueueRejoined Kind = "admit.queue-rejoined"
+
+	// KindFleetWithdrawn: EVERY replica of a group has withdrawn, so read work
+	// has nowhere left to go. ADR-015 makes one withdrawal a routing outcome;
+	// this is the condition where routing runs out of destinations, and ADR-039
+	// reports it rather than answering it — the candidate responses differ
+	// sharply and choosing between them needs a cluster to observe.
+	KindFleetWithdrawn Kind = "admit.fleet-withdrawn"
 )
 
 func init() {
@@ -84,6 +91,11 @@ func init() {
 			Kind:   KindQueueRejoined,
 			Reader: "console: load panel — paired with withdrawal, this is what flapping looks like",
 			Fields: []string{"node", "utilisation", "threshold"},
+		},
+		{
+			Kind:   KindFleetWithdrawn,
+			Reader: "console: load panel — the group with nowhere left to route, and its obligation",
+			Fields: []string{"group", "replicas", "withdrawn"},
 		},
 	} {
 		if err := Register(d); err != nil {
