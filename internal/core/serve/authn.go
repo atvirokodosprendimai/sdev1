@@ -9,6 +9,7 @@ import (
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/authz"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/certs"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
@@ -34,6 +35,15 @@ var (
 
 	// ErrNotPermitted reports a caller with no grant for what it asked.
 	ErrNotPermitted = errors.New("serve: no grant permits that")
+
+	// ErrDeniedCertificate reports a certificate that has stopped being
+	// believable.
+	//
+	// ★ Distinct from [ErrNotPermitted] on purpose. "Your key is revoked" and
+	// "you have no grant for that tenant" are different facts with different
+	// remedies — the first needs a new certificate, the second needs a grant —
+	// and collapsing them sends whoever is debugging to the wrong person.
+	ErrDeniedCertificate = errors.New("serve: that certificate has been denied")
 )
 
 // permits decides whether principal may read the tenant this key belongs to.
@@ -53,11 +63,36 @@ var (
 // ★ So the caller may choose which moment of the DATA to ask about, and may not
 // choose which moment of the GRANTS to be judged by. [authz.Set.Allow] then takes
 // no instant at all, which is ADR-033 rule 3 closing the same door one level up.
-func (s *Server) permits(ctx context.Context, principal string, k addr.Key) error {
+func (s *Server) permits(ctx context.Context, who Identity, k addr.Key) error {
 	tenant := addr.TenantOf(k)
 	if tenant == authz.SystemTenant {
 		return fmt.Errorf("%w: %s", ErrSystemTenant, tenant)
 	}
+
+	// ⚠⚠ THE DENIAL IS CHECKED HERE, PER REQUEST — not at the handshake.
+	//
+	// The handshake is the obvious place: cheaper, once per connection, and it
+	// refuses before anything else runs. It also silently undoes ADR-046, whose
+	// rule 8 made connections POOLED and long-lived. A handshake-only check
+	// leaves a stolen certificate reading over a connection it opened moments
+	// before the denial, for as long as the pool holds it — which is exactly
+	// "the revocation reported success and stopped nothing".
+	//
+	// ★ A handshake check MAY exist as a cheap early refusal. It must never be
+	// the only one, and this is the one that makes the property true.
+	//
+	// ⚠ An unreadable denial store REFUSES. Failing open would admit a
+	// compromised certificate precisely when the thing that would stop it is
+	// unreachable.
+	denied, reason, err := certs.Denied(ctx, s.opts.Grants, who.Serial, s.now())
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrDeniedCertificate, err)
+	}
+	if denied {
+		return fmt.Errorf("%w: %s: %s", ErrDeniedCertificate, who.Serial, reason)
+	}
+
+	principal := who.Principal
 
 	// The present, on both axes.
 	//

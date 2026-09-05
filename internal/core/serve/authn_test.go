@@ -11,6 +11,7 @@ import (
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/authz"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/certs"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/leafstore"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
@@ -51,6 +52,31 @@ func (g *grantLeaf) grant(t *testing.T, principal string, tn addr.TenantID, at i
 func (g *grantLeaf) revoke(t *testing.T, principal string, tn addr.TenantID, at int64) {
 	t.Helper()
 	g.write(t, authz.RevokeDatom, principal, tn, at)
+}
+
+// deny files a certificate denial into the same reserved-tenant leaf.
+//
+// ★ The same leaf as the grants, and a different entity space: a grant's entity
+// is a principal, a denial's is `cert:<serial>`. They are different statements
+// about different things and they share the machinery, which is the whole reason
+// a denial is a datom rather than a CRL.
+func (g *grantLeaf) deny(t *testing.T, serial string, until time.Time, reason string, at int64) {
+	t.Helper()
+
+	g.seq++
+	d, err := certs.DenyDatom(serial, until, reason,
+		tx.TxID{HLC: hlc.Timestamp{Wall: at}, Seq: g.seq}, at)
+	if err != nil {
+		t.Fatalf("DenyDatom: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := g.store.Append(ctx, d); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if err := g.store.Seal(ctx); err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
 }
 
 func (g *grantLeaf) write(t *testing.T,

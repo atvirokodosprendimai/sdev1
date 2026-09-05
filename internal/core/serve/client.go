@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
+	"github.com/atvirokodosprendimai/sdev1/internal/core/certs"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/datom"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/ports"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/routing"
@@ -92,11 +93,15 @@ type Client struct {
 	cache  *routing.Cache
 	budget int
 	opts   ClientOptions
-	// tls is built once at construction rather than per dial, because a parsed
-	// key pair and a certificate pool are the expensive parts and neither varies
-	// per connection.
-	tls  *tls.Config
-	pool *Pool
+	// certs is the certificate material, RE-READ PER DIAL.
+	//
+	// ⚠ It used to be a `*tls.Config` built once, which meant a rotated
+	// certificate was never picked up. The cost of rebuilding is a file read
+	// against a handshake that already does asymmetric crypto, and the
+	// alternative is a client that quietly presents an expired certificate
+	// forever.
+	certs *certs.Source
+	pool  *Pool
 }
 
 // NewClient seeds a cache and validates the options.
@@ -109,7 +114,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		return nil, fmt.Errorf("%w: dial %v, read %v, write %v, frame %d",
 			ErrNoTimeout, opts.DialTimeout, opts.ReadTimeout, opts.WriteTimeout, opts.MaxFrame)
 	}
-	config, err := opts.TLS.Client()
+	source, err := opts.TLS.Source()
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +130,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	if budget < 1 {
 		budget = routing.DefaultHopBudget
 	}
-	return &Client{cache: cache, budget: budget, opts: opts, tls: config, pool: pool}, nil
+	return &Client{cache: cache, budget: budget, opts: opts, certs: source, pool: pool}, nil
 }
 
 // Idle is how many warm connections this client holds for a node.
@@ -324,9 +329,12 @@ func (e *exchange) connect(node string) (net.Conn, bool, error) {
 func (e *exchange) dial(node string) (net.Conn, bool, error) {
 	opts := e.client.opts
 
+	// ⚠ The config is rebuilt HERE, per dial, so a replaced certificate and a
+	// replaced authority pool are both picked up without a restart. Building it
+	// once at construction is what ADR-046 did and what ADR-047 rule 4 changes.
 	dialer := &tls.Dialer{
 		NetDialer: &net.Dialer{Timeout: opts.DialTimeout},
-		Config:    e.client.tls,
+		Config:    e.client.certs.Client(),
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), opts.DialTimeout)
 	defer cancel()
