@@ -48,16 +48,44 @@
 // ⚠ And a decode error returns NOTHING. A partially decoded response is worse
 // than none, because the part that decoded looks usable.
 //
+// # A request names a KEY, and that is not a detail
+//
+// A [Request] carries an [github.com/atvirokodosprendimai/sdev1/internal/core/addr.Key]
+// and never a leaf identifier. ★★ THIS IS THE ONE DECISION IN ADR-045, and the
+// obvious alternative silently breaks ADR-008.
+//
+// Naming the leaf is what a client would reach for first: it resolved a route, so
+// it is holding a leaf already, and sending it saves the receiver a descent. What
+// it costs is rule 4. A node that does not serve that leaf holds a name it does
+// not recognise and NO WAY TO WORK OUT WHICH KEY PRODUCED IT — a leaf is a prefix
+// of a hash, and hashes do not run backwards. It cannot answer, and it cannot
+// redirect either, so the only thing left to send is an error. A stale client is
+// then stuck being wrong, which is exactly the state ADR-008 rule 4 exists to
+// make impossible.
+//
+// A key can be descended by ANY node to a leaf of its own. So the receiver
+// computes the leaf, discovers it does not hold it, and says where it went —
+// and the wrong node is the one that repairs the caller's map.
+//
+// # A length is a number a stranger chose
+//
+// [ReadFrame] refuses a frame claiming more than the declared bound BEFORE it
+// allocates or reads the body. ⚠ Refusing afterwards is not the same property and
+// is indistinguishable in the error: read-then-allocate is how one packet exhausts
+// a node, so the allocation is the attack rather than the oversized message.
+//
+// ⚠ And the bound is DECLARED, never defaulted — [ErrNoFrameBound] on a
+// non-positive one. "No bound" and "not configured yet" look identical from the
+// outside, and the value that reads as safest is the unbounded one. [MaxFrame] is
+// a value an operator may adopt; it is never applied on their behalf.
+//
 // # What it does not do
 //
-// No framing, no connections, no timeouts, and no request — those are
-// docs/adr/BACKLOG.md §18's, and none of them carries a correctness property that
-// is lost by waiting. This one does, which is why it is settled first.
+// No connections, no timeouts, no pooling and no authentication. The connection
+// belongs to
+// [github.com/atvirokodosprendimai/sdev1/internal/core/serve]; the rest is
+// docs/adr/BACKLOG.md §18's.
 //
-// ⚠ Nothing sends or receives a response yet: there is no transport. This is a
-// shape with no wire, tested against itself — the same position ADR-025 was in,
-// and for the same reason, because the format has to be right before any byte
-// moves.
-//
-// See docs/adr/ADR-043-response-envelope.md.
+// See docs/adr/ADR-043-response-envelope.md and
+// docs/adr/ADR-045-a-leaf-is-served-over-a-stream.md.
 package wire

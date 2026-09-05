@@ -94,8 +94,10 @@ to write into a different tenant's subtree.
 ## What you can actually do today
 
 **Short version: you can write facts, read them back at any instant, filter,
-search, traverse links, and keep all of it on a disk across restarts. What is
-missing is a network, a planner, and everything that needs one.**
+search, traverse links, keep all of it on a disk across restarts, and now READ
+ONE OVER A SOCKET — from a node that redirects you if it is not the one holding
+what you asked for. What is missing is a networked write, a planner, and
+everything that needs one.**
 
 | | Status | What that means |
 |---|---|---|
@@ -113,7 +115,10 @@ missing is a network, a planner, and everything that needs one.**
 | Writing a segment to a disk, reading a block back | **runs** | `internal/core/segstore`. Published by atomic rename, so a half-written segment is not addressable rather than being guarded; index verified before any offset from it is followed; the file is read through a memory mapping. macOS and Linux. |
 | A fact you `ASSERT` surviving a restart | **runs** | `sdev1-ql --dir ./leaf`, twice. A leaf is a directory of segments; a read merges them by the datoms' own transaction identifiers, so ⚠ **renaming the files does not change the answer**. |
 | Reading a stored fact back | **runs** | `READ` evaluates against any `ports.Reader`, so the same statement answers from memory or from a leaf, costing one entity read either way. |
-| A server, a cluster, a network | ❌ | No transport. Everything is in-process. |
+| A read over a network | **runs** | `cmd/sdev1-serve` puts a leaf behind a socket and `serve.Client` reads it. ★ A request names a **key**, never a leaf, so a node that does not hold it computes where it went and redirects — and the client repairs its own map from the node that was wrong. |
+| A write over a network | ❌ **refused by name** | Not an empty answer, which a client would read as "it ran and matched nothing". There is no leader to fence one (ADR-009) and no durability tier to commit it at (ADR-020). |
+| Authentication, TLS, pooling | ❌ | ⚠ **Nothing authenticates.** Anyone who can reach the socket reads any leaf that node holds. One request per connection, closed after. Do not expose this to a network you do not own. |
+| A cluster that places or replicates | ❌ | Routes are configured per node with `--route`; nothing distributes them, nothing elects, nothing replicates. |
 
 → **[How to query, with the full grammar and worked examples](docs/QUERY-LANGUAGE.md)**
 → **[What is next, ordered by what blocks what](TODO.md)**
@@ -123,17 +128,18 @@ missing is a network, a planner, and everything that needs one.**
 Read this before anything else on the page.
 
 **The decisions are made and recorded. Much of the machinery that would execute
-them is not built.** Twenty-four decision records are Accepted, each governs real
-Go code, and 32 of 33 packages pass under the race detector. A fact now survives
-process — but there is still no network transport and no query evaluator, so
-**you cannot yet start a server and store a fact through it.**
+them is not built.** Forty-five decision records are Accepted, each governs real
+Go code, and all 36 packages that carry tests pass under the race detector. A
+fact survives a process, and a read now crosses a network — but a WRITE does not,
+so **you can start a server and read a fact through it, and you cannot yet store
+one through it.**
 
 | | |
 |---|---|
-| **Runs today** | 33 Go packages, 376 tests, race-clean — 32 packages carry tests and the thirty-third, `cmd/sdev1-ql`, is proved by its records' fences running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
-| **Exists now** | A storage engine and an evaluator: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, and a `READ` that reads one entity out of it and filters. |
-| **Does not exist** | A transport, a query planner, a similarity metric, a node binary, a running cluster. |
-| **Honestly measured** | 259 mutants killed across the corpus, 18 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Seven found claims that nothing was holding: one was a real bug, and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
+| **Runs today** | 38 Go packages, 444 tests, race-clean — 36 packages carry tests. The two that do not are `cmd/sdev1-ql`, proved by its records' fences RUNNING the built binary, and `cmd/sdev1-serve`, whose fence only BUILDS it — the server's behaviour is proved in `internal/core/serve` against real loopback sockets, and the binary itself is proved to compile and nothing more. Three binaries: `sdev1-addr`, `sdev1-ql` and `sdev1-serve`. |
+| **Exists now** | A storage engine, an evaluator, and a transport: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, a `READ` that reads one entity out of it and filters — and a socket that serves that read or redirects to the node that can. |
+| **Does not exist** | A networked write, a query planner, a similarity metric, authentication, a running cluster that places or replicates anything. |
+| **Honestly measured** | 319 mutants killed across the corpus, 23 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Seven found claims that nothing was holding: one was a real bug, and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are

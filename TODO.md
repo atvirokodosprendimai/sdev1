@@ -103,13 +103,20 @@ What genuinely remains under this number, each blocked on something real:
 
 ---
 
-## A transport, and what it unblocks · §18
+## The transport exists; what it unblocks does not · §18
 
-There is no network anywhere in this repository. Everything is decided and tested
-in-process. That is what makes the decisions provable today, and it is also why
-nothing distributed has been *run*.
+★ **ADR-045 built it.** `cmd/sdev1-serve` puts a leaf behind a socket,
+`serve.Client` reads one, and a stale client is redirected and repairs its own
+map — over real loopback sockets, in tests, not in prose. The decision it turned
+on: a request names the **key**, never the leaf, because a node handed a leaf it
+does not recognise cannot invert it and so cannot redirect.
 
-Once a transport exists:
+⚠ **That is one read, from one node.** Nothing distributed has still been *run*:
+there is no election, no replication, no route distribution, no authentication,
+and a write over the wire is refused by name. So the list below did not shrink —
+it stopped being blocked.
+
+Now that a transport exists:
 
 | | |
 |---|---|
