@@ -117,11 +117,18 @@ says WHO, the present grant set says WHAT, and a retraction reaches a caller who
 connection is already open. Connections are pooled, so a handshake is paid per
 connection rather than per read.
 
+★ **ADR-047 then made it operable.** `sdev1-ca` mints an authority and issues
+bundles offline — there is no issuance endpoint and there cannot be one, since
+authenticating a certificate request needs a certificate. Rotation is replacing a
+file; a failed reload keeps the last good material rather than stopping the node.
+A certificate is revoked by denying its serial as a datom, checked per request so
+it reaches a caller who is already connected.
+
 ⚠ **That is still one read, from one node.** Nothing distributed has been *run*:
 no election, no replication, no route distribution, and a write over the wire is
-refused by name. ⚠ And **nothing issues a certificate** — an operator must run a
-CA, an expired one stops a node, and revoking an identity means reissuing the CA.
-So the list below did not shrink; it stopped being blocked.
+refused by name. ⚠ And **nothing renews** — an operator copies files, nothing
+watches an expiry, and a denial reaches only the nodes it is written to. So the
+list below did not shrink; it stopped being blocked.
 
 Now that a transport exists:
 

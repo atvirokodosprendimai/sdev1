@@ -121,8 +121,9 @@ certificates, and everything that needs one.**
 | Authorization on the served path | **runs** | ADR-033's grants, which were Accepted and unreachable until something could supply a caller identity. ★★ **The certificate says WHO; the present grant set says WHAT.** Revocation is a retraction and reaches a caller whose certificate and connection are both still live. A node with no grant source refuses every read. |
 | Connection pooling | **runs** | One request still in flight per connection, and the connection kept between reads — so a handshake is paid per connection rather than per read. ⚠ A connection is returned to the pool only after a complete, decoded exchange; any error discards it. |
 | A write over a network | ❌ **refused by name** | Not an empty answer, which a client would read as "it ran and matched nothing". There is no leader to fence one (ADR-009) and no durability tier to commit it at (ADR-020). |
-| Issuing, rotating or revoking a CERTIFICATE | ❌ | ⚠ **An operator must run a CA.** This consumes certificates and makes none: no issuance, no rotation, no CRL, no OCSP. Revoking a principal's **authority** works today and is a retraction; revoking its **identity** means reissuing the CA. |
-| A cluster that places or replicates | ❌ | Routes are configured per node with `--route`; nothing distributes them, nothing elects, nothing replicates. Each node reads a local grant leaf, so its view is as fresh as whatever put it there. |
+| Issuing, rotating and revoking a CERTIFICATE | **runs** | `cmd/sdev1-ca` mints an authority and issues bundles offline — ★ there is no issuance endpoint and there cannot be one, since authenticating a certificate request needs a certificate. Rotation is replacing a file: material is re-read per connection, and a failed reload keeps the last good rather than stopping the node. Revocation denies a **serial** as a datom, checked per request so it reaches a caller who is already connected. |
+| Automatic renewal, or watching an expiry | ❌ | ⚠ An operator runs `sdev1-ca` and copies files. Nothing renews, and nothing warns before a certificate expires — a node whose certificate lapses stops being able to handshake. |
+| A cluster that places or replicates | ❌ | Routes are configured per node with `--route`; nothing distributes them, nothing elects, nothing replicates. ⚠ Each node reads a local grant leaf, so a grant, a revocation and a certificate denial all reach only the nodes you write them to — a denial applied to one node in five is a partial revocation, which looks complete from the node that has it. |
 
 → **[How to query, with the full grammar and worked examples](docs/QUERY-LANGUAGE.md)**
 → **[What is next, ordered by what blocks what](TODO.md)**
@@ -132,7 +133,7 @@ certificates, and everything that needs one.**
 Read this before anything else on the page.
 
 **The decisions are made and recorded. Much of the machinery that would execute
-them is not built.** Forty-six decision records are Accepted, each governs real
+them is not built.** Forty-seven decision records are Accepted, each governs real
 Go code, and all 36 packages that carry tests pass under the race detector. A
 fact survives a process, and a read now crosses an authenticated network — but a
 WRITE does not, so **you can start a server and read a fact through it as a named
@@ -141,10 +142,10 @@ one through it.**
 
 | | |
 |---|---|
-| **Runs today** | 38 Go packages, 460 tests, race-clean — 36 packages carry tests, and the two that do not are the commands, each proved by RUNNING the built binary rather than by compiling it. ★ `cmd/sdev1-serve` is started **twice, as two real processes**, and a redirect is followed between them: a build would have proved only that `main` compiles, and the flag names, `--leaf` parsing and `--route` spelling could each have been wrong and still built clean. Three binaries: `sdev1-addr`, `sdev1-ql` and `sdev1-serve`. |
-| **Exists now** | A storage engine, an evaluator, and an authenticated transport: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, a `READ` that reads one entity out of it and filters — and a socket that checks who is asking, checks what they may read, then serves or redirects to the node that can. |
-| **Does not exist** | A networked write, a query planner, a similarity metric, certificate issuance or rotation, a running cluster that places or replicates anything. |
-| **Honestly measured** | 332 mutants killed across the corpus, 24 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Eight found claims that nothing was holding: one was a real bug, one was a security property (a certificate pool seeded from the host trust store, which no handshake test could see), and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
+| **Runs today** | 40 Go packages, 478 tests, race-clean — 37 packages carry tests, and the three that do not are the commands, each proved by RUNNING the built binary rather than by compiling it. ★ `cmd/sdev1-serve` is started **twice, as two real processes** with a redirect followed between them, and `cmd/sdev1-ca` is run to mint, refuse a second mint, and issue. A build would have proved only that `main` compiles — the verb names, the flag names and the wiring are invisible to it. Four binaries: `sdev1-addr`, `sdev1-ql`, `sdev1-serve` and `sdev1-ca`. |
+| **Exists now** | A storage engine, an evaluator, an authenticated transport, and the certificates it runs on: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, a `READ` that reads one entity out of it and filters — and a socket that checks who is asking, checks what they may read and whether their key is still believed, then serves or redirects to the node that can. |
+| **Does not exist** | A networked write, a query planner, a similarity metric, automatic certificate renewal, a running cluster that places or replicates anything. |
+| **Honestly measured** | 343 mutants killed across the corpus, 27 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Ten found claims that nothing was holding: one was a real bug, two were security properties invisible to any round-trip or handshake test (a certificate pool seeded from the host trust store; a revocation entity sharing a namespace with ordinary entities), and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are

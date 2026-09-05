@@ -179,16 +179,16 @@ func NewServer(opts Options) (*Server, error) {
 // finishes lazily, so a connection that has not been read from yet has no
 // verified chain — and a principal taken from it would be empty for a caller
 // that is perfectly well authenticated.
-func (s *Server) principalOf(conn net.Conn) (string, error) {
+func (s *Server) identityOf(conn net.Conn) (Identity, error) {
 	secure, ok := conn.(*tls.Conn)
 	if !ok {
-		return "", fmt.Errorf("%w: the connection is not a TLS connection", ErrNoPrincipal)
+		return Identity{}, fmt.Errorf("%w: the connection is not a TLS connection", ErrNoPrincipal)
 	}
 	if err := secure.Handshake(); err != nil {
-		return "", fmt.Errorf("serve: handshake: %w", err)
+		return Identity{}, fmt.Errorf("serve: handshake: %w", err)
 	}
 	state := secure.ConnectionState()
-	return PrincipalOf(&state)
+	return IdentityOf(&state)
 }
 
 // Addr is where the server is actually listening, which is what a test needs
@@ -256,7 +256,7 @@ func (s *Server) handle(ctx context.Context, conn net.Conn) {
 	if err := conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout)); err != nil {
 		return
 	}
-	principal, err := s.principalOf(conn)
+	who, err := s.identityOf(conn)
 	if err != nil {
 		return
 	}
@@ -286,7 +286,7 @@ func (s *Server) handle(ctx context.Context, conn net.Conn) {
 			s.reply(conn, &wire.Refusal{Reason: fmt.Sprintf("serve: %v", err)})
 			return
 		}
-		if !s.reply(conn, s.answer(ctx, principal, req)) {
+		if !s.reply(conn, s.answer(ctx, who, req)) {
 			return
 		}
 	}
@@ -310,7 +310,7 @@ func (s *Server) reply(conn net.Conn, resp wire.Response) bool {
 // ★★ THE KEY IS DESCENDED AGAINST THIS NODE'S OWN LEAF. The caller's belief about
 // placement is not an input and is not even representable in a request — which is
 // exactly why a node that does not hold the key can still say where it went.
-func (s *Server) answer(ctx context.Context, principal string, req wire.Request) wire.Response {
+func (s *Server) answer(ctx context.Context, who Identity, req wire.Request) wire.Response {
 	// ★★ AUTHORIZE FIRST, and against the PRESENT grant set. The request's own
 	// `Now` reaches the evaluator and never this decision — ADR-033 rule 3 is
 	// that a query `AS OF` last March is authorized by TODAY's grants, or else
@@ -319,7 +319,7 @@ func (s *Server) answer(ctx context.Context, principal string, req wire.Request)
 	// ⚠ Before the redirect too, and deliberately: a node that redirected an
 	// unauthorized caller would confirm which node holds a tenant's leaf, which
 	// is a small leak but a free one to avoid.
-	if err := s.permits(ctx, principal, req.Key); err != nil {
+	if err := s.permits(ctx, who, req.Key); err != nil {
 		return &wire.Refusal{Reason: err.Error()}
 	}
 	leaf, err := addr.Descend(req.Key, s.opts.Leaf.Depth)

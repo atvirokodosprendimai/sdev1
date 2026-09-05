@@ -596,7 +596,7 @@ outlives its destruction, so a shredded subject stays readable on whichever node
 happened to hold it. Any cache needs an invalidation that is part of the shred
 rather than beside it, and "eventually" is not good enough for an erasure.
 
-### §18 — The transport is built and authenticated; issuing the certificates is not
+### §18 — The transport is built, authenticated and provisioned; renewal is not
 
 **Source:** ADR-008 (`docs/adr/ADR-008-prefix-routing.md`), Out of Scope; and both
 its task files.
@@ -634,11 +634,30 @@ pattern, and it destroys ADR-033 — a certificate is valid until it expires, so
 revoking a capability carried in one needs a CRL, and until it runs the retraction
 that was meant to stop the caller reports success and changes nothing.
 
-⚠ **STILL OPEN, and this is now the thing that gates exposure: NOTHING ISSUES A
-CERTIFICATE.** ADR-046 consumes them and makes none — no issuance, no
-distribution, no rotation, no CRL and no OCSP. An operator must run a CA, an
-expired certificate stops a node with no reload path, and revoking an IDENTITY
-means reissuing the CA. Revoking AUTHORITY works today and is a retraction.
+★ **ANSWERED by ADR-047** (`docs/adr/ADR-047-certificate-lifecycle.md`): issuance,
+rotation and revocation of a certificate. `cmd/sdev1-ca` mints an authority and
+issues bundles offline; material is re-read per connection so rotating is
+replacing a file; and a certificate is revoked by denying its SERIAL as a datom
+in the reserved tenant.
+
+★★ **ISSUANCE CANNOT BE AN ENDPOINT, and that is a proof rather than a
+preference.** Every request here is authenticated by a client certificate, so an
+issuance endpoint would have to authenticate a requester that does not have one.
+Every version of it either weakens the transport for one path or introduces the
+bootstrap token ADR-046 rejected as a second identity. The first credential
+arrives out of band in every cluster PKI there has ever been.
+
+⚠ **STILL OPEN, and this is now what gates unattended operation: NOTHING RENEWS
+AND NOTHING WATCHES AN EXPIRY.** An operator runs the command and copies files. A
+certificate that lapses stops a node from handshaking, and the first warning is
+the outage. ⚠ The CA private key is also written unencrypted — protecting it is
+the operator's.
+
+⚠ **And a denial reaches only the nodes it is written to.** Nothing replicates the
+reserved tenant (§19), so a denial applied to one node in five is a PARTIAL
+revocation — which is worse than it sounds, because it looks complete from the
+node that has it. The same is true of a grant and of its retraction; it matters
+more here because a denial is a response to a compromise.
 
 ⚠ Also still open: a networked `sdev1-ql` (the CLI still uses a local session),
 retry and backoff, and multiplexing — which ADR-046 rule 8 refuses on a

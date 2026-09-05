@@ -136,3 +136,35 @@ func PrincipalOf(state *tls.ConnectionState) (string, error) {
 	}
 	return name, nil
 }
+
+// Identity is who a connection's peer is: the name it is authorized as, and the
+// certificate that proved it.
+//
+// ★ Both come off ONE verified chain. Reading them separately would allow a state
+// in which the principal and the serial disagree about which certificate was
+// presented, and nothing downstream could notice.
+type Identity struct {
+	// Principal is the Common Name, and is what the grant set is read for.
+	Principal string
+	// Serial names the certificate itself, and is what a denial names.
+	//
+	// ⚠ It is NOT an identity in the authorization sense. A principal keeps its
+	// grants when its certificate is replaced; denying a serial says only that
+	// one key has stopped being believable.
+	Serial string
+}
+
+// IdentityOf reads both off a verified connection state.
+//
+// ⚠ From `VerifiedChains` for the same reason [PrincipalOf] does — see there.
+func IdentityOf(state *tls.ConnectionState) (Identity, error) {
+	principal, err := PrincipalOf(state)
+	if err != nil {
+		return Identity{}, err
+	}
+	serial, err := certs.SerialOf(state)
+	if err != nil {
+		return Identity{}, err
+	}
+	return Identity{Principal: principal, Serial: serial}, nil
+}
