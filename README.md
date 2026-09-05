@@ -406,6 +406,11 @@ READ ->name FROM [staff]
 READ ->name, ->lastname FROM [staff] WHERE ->lastname = 'Adams'
 READ * FROM [staff] LIMIT 20 OFFSET 40 AS OF 1700000000
 
+-- Absence is its own clause, so "has this and lacks that" needs no AND.
+READ ->name FROM [staff] WITHOUT ->thirdname
+READ ->name FROM [staff] WHERE ->rank = 3 WITHOUT ->thirdname
+READ * FROM planet-7 WITHOUT radius
+
 -- Time travel. Two independent axes.
 READ * FROM planet-7 AS OF 1700000000                       -- valid time
 READ * FROM planet-7 TRANSACTION 1700000500                 -- transaction time
@@ -415,6 +420,7 @@ READ * FROM planet-7 AS OF 1700000000 TRANSACTION 1700000500
 MATCH SHAPE LIKE planet-7
   REQUIRE mass AS OF 1700000000, radius
   OPTIONAL nickname
+  WITHOUT retired
   SIMILARITY jaccard >= 0.8
 
 -- Full-text search. LIMIT is required.

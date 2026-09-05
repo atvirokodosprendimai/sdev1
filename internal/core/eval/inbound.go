@@ -112,9 +112,21 @@ func memberOf(ctx context.Context, r ports.Reader, sel *ql.Read, name string,
 		}
 	}
 
+	// ADR-036: the absence clause. ⚠ Applied BEFORE the drop below and never
+	// through it — a WITHOUT attribute is named in order to be absent, so
+	// requiring its presence would make the clause unsatisfiable.
+	if carries(carried, sel.Without) {
+		return member{}, false, nil
+	}
+
 	// Rule 4, the projection half. ⚠ Checked NAME BY NAME rather than by
 	// comparing counts: a projection that names one attribute twice would make
 	// a count comparison drop a member that carries it.
+	//
+	// ⚠ It iterates sel.Attributes ONLY. Extending it over sel.Without is the
+	// defect ADR-036 rule 4 names: it would drop every subject for lacking
+	// exactly what the caller asked them to lack, and would do it by returning
+	// nothing — which is indistinguishable from a correct empty answer.
 	for _, want := range sel.Attributes {
 		if _, held := carried[want]; !held {
 			return member{}, false, nil
@@ -129,6 +141,25 @@ func memberOf(ctx context.Context, r ports.Reader, sel *ql.Read, name string,
 		return member{}, false, nil
 	}
 	return member{entity: name, projected: projected}, true, nil
+}
+
+// carries reports whether any of the named attributes is present.
+//
+// ★ Absence is the NEGATION OF THIS, and this is `ports.Carried`'s answer rather
+// than a second one. That already gets three histories right: an attribute never
+// asserted, one asserted and later RETRACTED, and one whose validity interval
+// does not cover the instant. A second definition would drift from the first on
+// exactly the retracted case, which is the one this clause exists to find.
+//
+// ⚠ It is therefore SNAPSHOT-RELATIVE. "Does not carry `thirdname`" means at this
+// instant, never "never had one".
+func carries(carried map[string]ports.Datom, names []string) bool {
+	for _, name := range names {
+		if _, held := carried[name]; held {
+			return true
+		}
+	}
+	return false
 }
 
 // pointsAt reports whether an entity's carried attributes include a reference to

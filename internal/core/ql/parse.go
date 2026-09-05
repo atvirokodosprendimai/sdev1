@@ -195,6 +195,23 @@ func (p *parser) parseRead() (Statement, error) {
 		sel.Where = pred
 	}
 
+	// ⚠ A CLAUSE of its own, not a predicate (ADR-036 rule 1). `WHERE` holds
+	// exactly one comparison by ADR-011, so folding absence into it would force
+	// `AND` into the grammar to express "has this and lacks that" — which is the
+	// only form anybody asks. Two clauses conjoin by being two clauses.
+	if p.acceptKeyword("WITHOUT") {
+		excluded, err := p.parseMarkedAttributes()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.checkMarkers(excluded, sel); err != nil {
+			return nil, err
+		}
+		for _, a := range excluded {
+			sel.Without = append(sel.Without, a.name)
+		}
+	}
+
 	page, err := p.parsePage(sel)
 	if err != nil {
 		return nil, err
@@ -416,4 +433,26 @@ func (p *parser) parseTimeClause() (TimeClause, error) {
 	}
 
 	return clause, nil
+}
+
+// parseMarkedAttributes reads one or more comma-separated attributes, each of
+// which may carry the `->` marker.
+//
+// ⚠ Distinct from [parser.parseAttributeList], which serves `SEARCH IN` and
+// takes plain names. SEARCH names attributes to search, not attributes of a
+// member, so the marker rule does not apply there and must not leak in.
+func (p *parser) parseMarkedAttributes() ([]attribute, error) {
+	var out []attribute
+	for {
+		a, err := p.parseAttribute()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+		if t := p.peek(); t.Kind == KindPunct && t.Text == "," {
+			p.next()
+			continue
+		}
+		return out, nil
+	}
 }

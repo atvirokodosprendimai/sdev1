@@ -31,6 +31,16 @@ type Read struct {
 	Inbound bool
 	// Where is the optional filter.
 	Where *Predicate
+	// Without names attributes the subject must NOT carry (ADR-036).
+	//
+	// ★ It is a CLAUSE and not a predicate, so `WHERE a = 'x' WITHOUT b` needs no
+	// `AND`: two clauses conjoin by being two clauses. ADR-011 has no boolean
+	// composition, and folding absence into `WHERE` would have forced some in.
+	//
+	// ⚠ These attributes are named in order to be ABSENT, so they are never
+	// subject to ADR-035's rule that a member missing a named attribute is
+	// dropped. Applying it here would make the clause unsatisfiable.
+	Without []string
 	// Page is the paging clause as WRITTEN. Only an inbound read may carry one.
 	Page Page
 	// Time is the qualifier as WRITTEN, before defaults.
