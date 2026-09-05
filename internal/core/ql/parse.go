@@ -1,12 +1,23 @@
 package ql
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/hlc"
 	"github.com/atvirokodosprendimai/sdev1/internal/core/tx"
 )
+
+// ErrSelectRenamed reports that a statement began with SELECT, which ADR-034
+// replaced with READ.
+//
+// ★ The old verb is REFUSED rather than accepted as an alias, and refused BY
+// NAME rather than merely unknown: every example written before the rename says
+// SELECT, so a caller who types it should be told what to type instead. Two
+// spellings of one verb would be two things to document and a permanent question
+// about which is canonical.
+var ErrSelectRenamed = errors.New("ql: SELECT was renamed to READ")
 
 // ParseError says where a parse failed and what was expected there.
 //
@@ -20,11 +31,18 @@ type ParseError struct {
 	Found string
 	// Expected describes what would have been accepted.
 	Expected string
+	// Err is the sentinel this failure matches, when it has one. Most parse
+	// errors are positional and carry none.
+	Err error
 }
 
 func (e *ParseError) Error() string {
 	return fmt.Sprintf("ql: at byte %d: found %s, expected %s", e.Pos, e.Found, e.Expected)
 }
+
+// Unwrap exposes [ParseError.Err] so a caller can match a named refusal with
+// [errors.Is] instead of comparing message text.
+func (e *ParseError) Unwrap() error { return e.Err }
 
 // parser is a hand-written recursive-descent parser over the token stream.
 type parser struct {
@@ -91,8 +109,16 @@ func (p *parser) expectIdent(what string) (string, error) {
 
 func (p *parser) statement() (Statement, error) {
 	switch t := p.peek(); {
+	case t.Kind == KindKeyword && t.Text == "READ":
+		return p.parseRead()
 	case t.Kind == KindKeyword && t.Text == "SELECT":
-		return p.parseSelect()
+		// ⚠ Refused by name, not merely unrecognised. See [ErrSelectRenamed].
+		return nil, &ParseError{
+			Pos:      t.Pos,
+			Found:    t.String(),
+			Expected: "READ, which replaced SELECT",
+			Err:      ErrSelectRenamed,
+		}
 	case t.Kind == KindKeyword && t.Text == "MATCH":
 		return p.parseShape()
 	case t.Kind == KindKeyword && t.Text == "SEARCH":
@@ -102,16 +128,16 @@ func (p *parser) statement() (Statement, error) {
 	case t.Kind == KindKeyword && t.Text == "TRAVERSE":
 		return p.parseTraverse()
 	default:
-		return nil, p.errorAt(t, "SELECT, MATCH, SEARCH, ASSERT, RETRACT or TRAVERSE")
+		return nil, p.errorAt(t, "READ, MATCH, SEARCH, ASSERT, RETRACT or TRAVERSE")
 	}
 }
 
-func (p *parser) parseSelect() (Statement, error) {
-	if err := p.expectKeyword("SELECT"); err != nil {
+func (p *parser) parseRead() (Statement, error) {
+	if err := p.expectKeyword("READ"); err != nil {
 		return nil, err
 	}
 
-	sel := &Select{}
+	sel := &Read{}
 	// `*` projects everything; otherwise a comma-separated list.
 	if t := p.peek(); t.Kind == KindPunct && t.Text == "*" {
 		p.next()

@@ -47,9 +47,9 @@ func TestASessionRehydratesFromItsStore(t *testing.T) {
 	// A different session, on the same directory, with nothing carried over in
 	// memory.
 	second, _ := newDurableSession(t, dir, 5000)
-	got := mustRun(t, second, `SELECT * FROM planet-3`)
+	got := mustRun(t, second, `READ * FROM planet-3`)
 	if len(got.Rows) != 2 {
-		t.Fatalf("SELECT after reopening returned %d rows, want 2: %+v", len(got.Rows), got.Rows)
+		t.Fatalf("READ after reopening returned %d rows, want 2: %+v", len(got.Rows), got.Rows)
 	}
 
 	found := map[string]string{}
@@ -82,7 +82,7 @@ func TestRehydrationRestoresTheSearchIndexToo(t *testing.T) {
 	second, _ := newDurableSession(t, dir, 5000)
 
 	// ⚠ This is the quiet one. A rehydration that restored the datom map and
-	// forgot the index leaves SELECT working, the restart looking successful, and
+	// forgot the index leaves READ working, the restart looking successful, and
 	// SEARCH answering nothing at all with no error anywhere.
 	hits := mustRun(t, second, `SEARCH "marble" IN codename LIMIT 10`)
 	if len(hits.Hits) == 0 {
@@ -122,17 +122,17 @@ func TestRehydrationAdvancesTheClockPastWhatItLoaded(t *testing.T) {
 			"%s — the clock did not observe what it loaded", fresh, old)
 	}
 
-	// ★ Asserted on the identifiers rather than through a SELECT, on purpose. The
+	// ★ Asserted on the identifiers rather than through a READ, on purpose. The
 	// two axes are independent: winding the clock back to 1000 also winds BUSINESS
 	// time back, and a fact valid from 9000 is legitimately not true at 1000. A
-	// SELECT here would be measuring the business axis while claiming to measure
+	// READ here would be measuring the business axis while claiming to measure
 	// the system one, and it would fail for a reason that is correct behaviour.
 }
 
 // TestTheSessionReaderHonoursItsSnapshot exercises the reader DIRECTLY, because
 // nothing else can see whether it does.
 //
-// ⚠ [eval.Select] filters again with the query the parser resolved, which is the
+// ⚠ [eval.Read] filters again with the query the parser resolved, which is the
 // authoritative form — so a reader that ignored its snapshot entirely would still
 // produce the right rows through a statement, and a mutant that removed this
 // filter survived every other test in this package. The obligation is real
@@ -197,9 +197,9 @@ func TestASelectWithAStoreReadsThroughTheStore(t *testing.T) {
 		t.Fatalf("Append: %v", err)
 	}
 
-	got := mustRun(t, s, `SELECT * FROM planet-9`)
+	got := mustRun(t, s, `READ * FROM planet-9`)
 	if len(got.Rows) != 1 {
-		t.Fatalf("SELECT returned %d rows for a fact only the store holds; the session is "+
+		t.Fatalf("READ returned %d rows for a fact only the store holds; the session is "+
 			"answering from its own map rather than through the store", len(got.Rows))
 	}
 	if got.Rows[0].Value != "1.9e27" {
@@ -253,9 +253,9 @@ func TestASessionWithNoStoreIsUnchanged(t *testing.T) {
 	s, _ := newTestSession()
 
 	mustRun(t, s, `ASSERT planet-3 mass = "5.97e24"`)
-	got := mustRun(t, s, `SELECT * FROM planet-3`)
+	got := mustRun(t, s, `READ * FROM planet-3`)
 	if len(got.Rows) != 1 {
-		t.Fatalf("SELECT returned %d rows, want 1", len(got.Rows))
+		t.Fatalf("READ returned %d rows, want 1", len(got.Rows))
 	}
 	hits := mustRun(t, s, `SEARCH "5.97e24" IN mass LIMIT 5`)
 	if len(hits.Hits) == 0 {

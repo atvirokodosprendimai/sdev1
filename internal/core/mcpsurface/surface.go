@@ -36,7 +36,8 @@ type Verb int
 const (
 	// VerbUnset is the zero value and is never valid.
 	VerbUnset Verb = iota
-	// VerbRead compiles to a [ql.Select].
+	// VerbRead compiles to a [ql.Read]. ★ The surface named it `read` before the
+	// language did (ADR-013); ADR-034 made the two agree.
 	VerbRead
 	// VerbResemble compiles to a [ql.ShapeQuery].
 	VerbResemble
@@ -271,7 +272,7 @@ func (r *Registry) Compile(s Session, c Call) (Compiled, *Refusal) {
 	switch t.Verb {
 	case VerbRead:
 		return Compiled{
-			Statement: &ql.Select{
+			Statement: &ql.Read{
 				Entity:     entity,
 				Attributes: splitList(c.Args["attributes"]),
 				Time:       when,

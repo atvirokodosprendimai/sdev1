@@ -49,7 +49,7 @@ func sampleArgs(t *testing.T, tool Tool) map[string]string {
 func timeOf(t *testing.T, s ql.Statement) ql.TimeClause {
 	t.Helper()
 	switch v := s.(type) {
-	case *ql.Select:
+	case *ql.Read:
 		return v.Time
 	case *ql.ShapeQuery:
 		return v.Time
@@ -100,7 +100,7 @@ func TestEveryToolCompilesToAQuery(t *testing.T) {
 		}
 		switch tool.Verb {
 		case VerbRead:
-			if _, ok := compiled.Statement.(*ql.Select); !ok {
+			if _, ok := compiled.Statement.(*ql.Read); !ok {
 				t.Fatalf("tool %q declares verb %s but compiled to %T", tool.Name, tool.Verb, compiled.Statement)
 			}
 		case VerbResemble:

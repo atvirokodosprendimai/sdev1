@@ -129,45 +129,45 @@ func TestQuotedIdentifierSurvivesAKeywordCollision(t *testing.T) {
 	for _, name := range []string{"limit", "in", "select", "by", "facet", "search", "from", "where"} {
 		// Unquoted, it is a keyword and the projection is refused. That is the
 		// collision this test exists because of.
-		if _, err := Parse("SELECT " + name + " FROM planet-7"); err == nil {
+		if _, err := Parse("READ " + name + " FROM planet-7"); err == nil {
 			t.Fatalf("the unquoted keyword %q parsed as an attribute name; if that is now legal, "+
 				"this test is asserting a collision that no longer exists", name)
 		}
 
-		stmt, err := Parse("SELECT `" + name + "` FROM planet-7")
+		stmt, err := Parse("READ `" + name + "` FROM planet-7")
 		if err != nil {
-			t.Fatalf("SELECT `%s`: %v — an attribute whose name collides with a keyword must stay "+
+			t.Fatalf("READ `%s`: %v — an attribute whose name collides with a keyword must stay "+
 				"addressable, or adding a keyword silently orphans data that parsed yesterday", name, err)
 		}
-		sel := stmt.(*Select)
+		sel := stmt.(*Read)
 		if len(sel.Attributes) != 1 || sel.Attributes[0] != name {
-			t.Fatalf("SELECT `%s` projected %v", name, sel.Attributes)
+			t.Fatalf("READ `%s` projected %v", name, sel.Attributes)
 		}
 	}
 
 	// It works in a WHERE too, and the quotes are not part of the name.
-	stmt, err := Parse("SELECT * FROM planet-7 WHERE `limit` > 10")
+	stmt, err := Parse("READ * FROM planet-7 WHERE `limit` > 10")
 	if err != nil {
 		t.Fatalf("a quoted attribute in WHERE: %v", err)
 	}
-	if got := stmt.(*Select).Where.Attribute; got != "limit" {
+	if got := stmt.(*Read).Where.Attribute; got != "limit" {
 		t.Fatalf("the quoted attribute came through as %q, want %q", got, "limit")
 	}
 
 	// A quoted ordinary word is still just that word, so quoting is never wrong.
-	plain := mustSelect(t, "SELECT `mass` FROM planet-7")
+	plain := mustRead(t, "READ `mass` FROM planet-7")
 	if plain.Attributes[0] != "mass" {
 		t.Fatalf("quoting an ordinary name changed it to %q", plain.Attributes[0])
 	}
 }
 
-func mustSelect(t *testing.T, src string) *Select {
+func mustRead(t *testing.T, src string) *Read {
 	t.Helper()
 	stmt, err := Parse(src)
 	if err != nil {
 		t.Fatalf("Parse(%q): %v", src, err)
 	}
-	return stmt.(*Select)
+	return stmt.(*Read)
 }
 
 // TestSearchFacetsAreOptional checks FACET BY may be omitted or repeated.

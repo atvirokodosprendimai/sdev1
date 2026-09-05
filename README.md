@@ -28,22 +28,22 @@ go run ./cmd/sdev1-ql \
   --statements "ASSERT planet-9 name = 'Kepler-9c'" \
   --statements "ASSERT planet-9 class = 'gas giant'" \
   --statements "ASSERT planet-9 description = 'a cool distant giant'" \
-  --statements "SELECT * FROM planet-7" \
-  --statements "SELECT * FROM planet-7 AS OF 50" \
+  --statements "READ * FROM planet-7" \
+  --statements "READ * FROM planet-7 AS OF 50" \
   --statements "SEARCH 'giant' IN description FACET BY class LIMIT 5" \
   --statements "RETRACT planet-7 class = 'gas giant'" \
-  --statements "SELECT class FROM planet-7"
+  --statements "READ class FROM planet-7"
 ```
 
 Abridged output — the writes echo back, then:
 
 ```
-SELECT * FROM planet-7
+READ * FROM planet-7
   planet-7   class        gas giant
   planet-7   description  a hot inflated giant
   planet-7   name         Kepler-7b
 
-SELECT * FROM planet-7 AS OF 50
+READ * FROM planet-7 AS OF 50
   no rows
 
 SEARCH 'giant' IN description FACET BY class LIMIT 5
@@ -57,7 +57,7 @@ RETRACT planet-7 class = 'gas giant'
   valid   [1788555023240962263, ∞)
   txn     1788555023240962263.0@1:00#7
 
-SELECT class FROM planet-7
+READ class FROM planet-7
   no rows
 ```
 
@@ -70,7 +70,7 @@ Four things in that transcript are the whole design, working:
   it. `VALID FROM 100` backdates when the fact was *true*; nothing backdates when
   it was *recorded*.
 - **`RETRACT` does not delete.** It appends a datom that stops the fact holding —
-  which is why the last `SELECT` returns nothing while the log still has every
+  which is why the last `READ` returns nothing while the log still has every
   version.
 - **The search index was fed by the writes**, not by anything separate, and the
   facet counts only what a caller can actually see.
@@ -83,7 +83,7 @@ to write into a different tenant's subtree.
 >
 > ```
 > sdev1-ql --dir ./leaf --statements 'ASSERT planet-3 mass = "5.97e24"'
-> sdev1-ql --dir ./leaf --statements 'SELECT * FROM planet-3'
+> sdev1-ql --dir ./leaf --statements 'READ * FROM planet-3'
 >   planet-3   mass         5.97e24
 > ```
 >
@@ -99,20 +99,20 @@ missing is a network, a planner, and everything that needs one.**
 
 | | Status | What that means |
 |---|---|---|
-| `SELECT … FROM … WHERE … AS OF … TRANSACTION …` | **runs** | Against a session or a leaf. ⚠ `WHERE` **filters** — until ADR-027 it parsed and was discarded, so a narrow question got a wide answer with no error. A comparison is numeric only when the literal was written as one. |
+| `READ … FROM … WHERE … AS OF … TRANSACTION …` | **runs** | Against a session or a leaf. ⚠ `WHERE` **filters** — until ADR-027 it parsed and was discarded, so a narrow question got a wide answer with no error. A comparison is numeric only when the literal was written as one. |
 | `MATCH SHAPE LIKE … REQUIRE … OPTIONAL … SIMILARITY …` | **parses, refused by name** | Per-leg time qualifiers work. It needs a similarity metric, and one chosen against no corpus is a number nobody has reason to believe. |
 | `SEARCH … IN … FACET BY … LIMIT …` | **parses + runs** | Against an **in-memory** index: real ranking, real facets, erasure honoured. Not persisted. |
 | Backtick-quoted identifiers — `` `limit` `` | **works** | Any keyword is addressable as an attribute name. |
 | Placing an entity in the trie | **runs** | `cmd/sdev1-addr`, end to end, no network. |
 | `ASSERT … VALID FROM … TO …` / `RETRACT …` | **parses + runs** | Creates and retracts facts in the in-memory session. Valid time is yours; **transaction time is never** — stating it is a parse error. |
-| Reading a fact back, at any instant | **runs** | `SELECT … AS OF …` against the session, through the real visibility predicate. |
+| Reading a fact back, at any instant | **runs** | `READ … AS OF …` against the session, through the real visibility predicate. |
 | **`INSERT` / `UPDATE` / `DELETE`** | ❌ **will never exist** | The store appends. An update is an assertion, a delete a retraction, an erasure a destroyed key. |
 | Links — `ASSERT a orbits = ->b` | **parses + runs** | A value prefixed `->` is a reference, stored as a kind and never inferred from bytes. |
 | Taxonomies at a past instant — `TRAVERSE a DEPTH 2 AS OF t` | **parses + runs** | Free once links are datoms. ⚠ **Every hop resolves at one instant** — otherwise you get a tree that never existed. |
 | **Joins, `AND`/`OR`, `ORDER BY`, `COUNT`** | ❌ | See the query guide's boundary table for which are decisions and which are gaps. |
 | Writing a segment to a disk, reading a block back | **runs** | `internal/core/segstore`. Published by atomic rename, so a half-written segment is not addressable rather than being guarded; index verified before any offset from it is followed; the file is read through a memory mapping. macOS and Linux. |
 | A fact you `ASSERT` surviving a restart | **runs** | `sdev1-ql --dir ./leaf`, twice. A leaf is a directory of segments; a read merges them by the datoms' own transaction identifiers, so ⚠ **renaming the files does not change the answer**. |
-| Reading a stored fact back | **runs** | `SELECT` evaluates against any `ports.Reader`, so the same statement answers from memory or from a leaf, costing one entity read either way. |
+| Reading a stored fact back | **runs** | `READ` evaluates against any `ports.Reader`, so the same statement answers from memory or from a leaf, costing one entity read either way. |
 | A server, a cluster, a network | ❌ | No transport. Everything is in-process. |
 
 → **[How to query, with the full grammar and worked examples](docs/QUERY-LANGUAGE.md)**
@@ -131,7 +131,7 @@ process — but there is still no network transport and no query evaluator, so
 | | |
 |---|---|
 | **Runs today** | 33 Go packages, 376 tests, race-clean — 32 packages carry tests and the thirty-third, `cmd/sdev1-ql`, is proved by its records' fences running the built binary. Two binaries, `sdev1-addr` and `sdev1-ql`. |
-| **Exists now** | A storage engine and an evaluator: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, and a `SELECT` that reads one entity out of it and filters. |
+| **Exists now** | A storage engine and an evaluator: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, and a `READ` that reads one entity out of it and filters. |
 | **Does not exist** | A transport, a query planner, a similarity metric, a node binary, a running cluster. |
 | **Honestly measured** | 259 mutants killed across the corpus, 18 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Seven found claims that nothing was holding: one was a real bug, and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
 
@@ -378,23 +378,33 @@ erasure it contains.**
 ## The query language
 
 One idea: **time is a clause, not a family of verbs.** There is no
-`SELECT_HISTORY` and no `AS_OF_SELECT` — there is `SELECT`, and it may carry a
+`READ_HISTORY` and no `AS_OF_READ` — there is `READ`, and it may carry a
 time qualifier.
+
+The verb is `READ` rather than `SELECT` (ADR-034): the store appends, so there is
+no `INSERT`, `UPDATE` or `DELETE` for `SELECT` to be a sibling of, and a borrowed
+word that implies three verbs which will never exist teaches the wrong model at
+the first token. `SELECT` is still **reserved**, so typing it is refused by name
+rather than failing somewhere inside the projection:
+
+```sql
+SELECT * FROM planet-7             -- refused: SELECT was renamed to READ
+```
 
 **Every form the language accepts, in full.** There are three statements and one
 standalone clause — that is the whole surface:
 
 ```sql
 -- Read an entity. `*` is every attribute.
-SELECT * FROM planet-7
-SELECT mass, radius FROM planet-7
-SELECT name FROM planet-7 WHERE class = 'terrestrial'
-SELECT * FROM planet-7 WHERE mass >= -40.5
+READ * FROM planet-7
+READ mass, radius FROM planet-7
+READ name FROM planet-7 WHERE class = 'terrestrial'
+READ * FROM planet-7 WHERE mass >= -40.5
 
 -- Time travel. Two independent axes.
-SELECT * FROM planet-7 AS OF 1700000000                       -- valid time
-SELECT * FROM planet-7 TRANSACTION 1700000500                 -- transaction time
-SELECT * FROM planet-7 AS OF 1700000000 TRANSACTION 1700000500
+READ * FROM planet-7 AS OF 1700000000                       -- valid time
+READ * FROM planet-7 TRANSACTION 1700000500                 -- transaction time
+READ * FROM planet-7 AS OF 1700000000 TRANSACTION 1700000500
 
 -- Find subjects that resemble one. Metric and threshold are required.
 MATCH SHAPE LIKE planet-7
@@ -410,7 +420,7 @@ SEARCH 'red dwarf' IN description, notes
   AS OF 1700000000
 
 -- Any keyword is addressable as an attribute name.
-SELECT `limit`, `in` FROM planet-7
+READ `limit`, `in` FROM planet-7
 
 -- A storage policy for the NEXT write. Parsed standalone; no write statement
 -- exists to carry it yet.
@@ -523,7 +533,7 @@ programs already speak.
 
 ## Search and faceting
 
-Everything above requires already knowing what you are looking for: `SELECT`
+Everything above requires already knowing what you are looking for: `READ`
 reads a **named** entity, and `MATCH SHAPE` needs a subject to resemble. Search
 is how you ask without knowing, and faceting is how you ask what the matches look
 like in aggregate.

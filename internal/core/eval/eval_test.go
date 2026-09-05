@@ -56,15 +56,15 @@ func (f *fakeReader) Attributes(_ context.Context, entity string, _ ports.Snapsh
 	return nil, nil
 }
 
-func parseSelect(t *testing.T, src string) *ql.Select {
+func parseRead(t *testing.T, src string) *ql.Read {
 	t.Helper()
 	stmt, err := ql.Parse(src)
 	if err != nil {
 		t.Fatalf("Parse(%q): %v", src, err)
 	}
-	sel, ok := stmt.(*ql.Select)
+	sel, ok := stmt.(*ql.Read)
 	if !ok {
-		t.Fatalf("Parse(%q) produced %T, want *ql.Select", src, stmt)
+		t.Fatalf("Parse(%q) produced %T, want *ql.Read", src, stmt)
 	}
 	return sel
 }
@@ -105,11 +105,11 @@ func TestAPredicateThatMatchesNothingReturnsNothing(t *testing.T) {
 	// every row came back — no error, no warning, and no way for the caller to
 	// tell that the question they asked was not the one answered.
 	r := planet3()
-	sel := parseSelect(t, `SELECT * FROM planet-3 WHERE mass = "999"`)
+	sel := parseRead(t, `READ * FROM planet-3 WHERE mass = "999"`)
 
-	rows, err := Select(context.Background(), r, sel, 1000)
+	rows, err := Read(context.Background(), r, sel, 1000)
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Read: %v", err)
 	}
 	if len(rows) != 0 {
 		t.Fatalf("a WHERE that matches nothing returned %v; the clause is being ignored, and the "+
@@ -129,10 +129,10 @@ func TestAPredicateOnAnUnprojectedAttributeStillFilters(t *testing.T) {
 	// The published guide's own example. ⚠ Narrowing to the projection BEFORE
 	// testing the predicate leaves nothing to test against, and this returns
 	// nothing on data where it should return a row.
-	rows, err := Select(context.Background(), r,
-		parseSelect(t, `SELECT name FROM planet-7 WHERE class = 'terrestrial'`), 1000)
+	rows, err := Read(context.Background(), r,
+		parseRead(t, `READ name FROM planet-7 WHERE class = 'terrestrial'`), 1000)
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Read: %v", err)
 	}
 	if want := []string{"name=Terra"}; !equal(rowStrings(rows), want) {
 		t.Errorf("got %v, want %v — a predicate must be able to name an attribute the "+
@@ -140,10 +140,10 @@ func TestAPredicateOnAnUnprojectedAttributeStillFilters(t *testing.T) {
 	}
 
 	// And it must still filter: the same query against a class that does not match.
-	rows, err = Select(context.Background(), r,
-		parseSelect(t, `SELECT name FROM planet-7 WHERE class = 'gas giant'`), 1000)
+	rows, err = Read(context.Background(), r,
+		parseRead(t, `READ name FROM planet-7 WHERE class = 'gas giant'`), 1000)
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Read: %v", err)
 	}
 	if len(rows) != 0 {
 		t.Errorf("got %v for a predicate that does not match, want nothing", rowStrings(rows))
@@ -157,15 +157,15 @@ func TestASelectReadsOneEntityOnce(t *testing.T) {
 		"planet-3": {fact("planet-3", "mass", "3", 100)},
 	}}
 
-	if _, err := Select(context.Background(), r,
-		parseSelect(t, `SELECT * FROM planet-3`), 1000); err != nil {
-		t.Fatalf("Select: %v", err)
+	if _, err := Read(context.Background(), r,
+		parseRead(t, `READ * FROM planet-3`), 1000); err != nil {
+		t.Fatalf("Read: %v", err)
 	}
 
 	// ⚠ Counted, not inferred from the answer. An evaluator that loaded every
 	// entity and discarded all but one returns exactly the right rows.
 	if want := []string{"planet-3"}; !equal(r.loads, want) {
-		t.Errorf("Select performed %v, want exactly %v — a statement that walks a leaf makes "+
+		t.Errorf("Read performed %v, want exactly %v — a statement that walks a leaf makes "+
 			"every query need everything in memory", r.loads, want)
 	}
 }
@@ -175,14 +175,14 @@ func TestAComparisonThatCannotBeMadeIsRefused(t *testing.T) {
 		"planet-3": {fact("planet-3", "codename", "blue marble", 100)},
 	}}
 
-	rows, err := Select(context.Background(), r,
-		parseSelect(t, `SELECT * FROM planet-3 WHERE codename > 5`), 1000)
+	rows, err := Read(context.Background(), r,
+		parseRead(t, `READ * FROM planet-3 WHERE codename > 5`), 1000)
 	if !errors.Is(err, ErrNotComparable) {
 		t.Fatalf("comparing a non-numeric value with a number = %v, want ErrNotComparable; "+
 			"returning false instead hides a type error inside an ordinary empty result", err)
 	}
 	if len(rows) != 0 {
-		t.Errorf("Select returned %v alongside its error", rowStrings(rows))
+		t.Errorf("Read returned %v alongside its error", rowStrings(rows))
 	}
 }
 
@@ -193,19 +193,19 @@ func TestNumericIsAPropertyOfTheQueryNotTheData(t *testing.T) {
 
 	// ★ The same stored value, the same operator, two answers — decided by how the
 	// literal was WRITTEN. Numerically 10 < 9 is false; as text "10" < "9" is true.
-	numeric, err := Select(context.Background(), r,
-		parseSelect(t, `SELECT * FROM planet-3 WHERE v < 9`), 1000)
+	numeric, err := Read(context.Background(), r,
+		parseRead(t, `READ * FROM planet-3 WHERE v < 9`), 1000)
 	if err != nil {
-		t.Fatalf("numeric Select: %v", err)
+		t.Fatalf("numeric Read: %v", err)
 	}
 	if len(numeric) != 0 {
 		t.Errorf("10 < 9 compared numerically returned %v, want nothing", rowStrings(numeric))
 	}
 
-	textual, err := Select(context.Background(), r,
-		parseSelect(t, `SELECT * FROM planet-3 WHERE v < "9"`), 1000)
+	textual, err := Read(context.Background(), r,
+		parseRead(t, `READ * FROM planet-3 WHERE v < "9"`), 1000)
 	if err != nil {
-		t.Fatalf("textual Select: %v", err)
+		t.Fatalf("textual Read: %v", err)
 	}
 	if len(textual) != 1 {
 		t.Errorf(`"10" < "9" compared as text returned %v, want the row — the comparison is `+
@@ -226,10 +226,10 @@ func TestOneSnapshotReachesTheReaderAndTheFilter(t *testing.T) {
 		},
 	}}
 
-	sel := parseSelect(t, `SELECT * FROM planet-3 AS OF 200`)
-	rows, err := Select(context.Background(), r, sel, 9999)
+	sel := parseRead(t, `READ * FROM planet-3 AS OF 200`)
+	rows, err := Read(context.Background(), r, sel, 9999)
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Read: %v", err)
 	}
 
 	// The reader was handed exactly the instant the clause resolved to — not the
@@ -262,9 +262,9 @@ func TestARetractedAttributeIsAbsent(t *testing.T) {
 		},
 	}}
 
-	rows, err := Select(context.Background(), r, parseSelect(t, `SELECT * FROM planet-3`), 1000)
+	rows, err := Read(context.Background(), r, parseRead(t, `READ * FROM planet-3`), 1000)
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Read: %v", err)
 	}
 	if want := []string{"mass=5"}; !equal(rowStrings(rows), want) {
 		t.Errorf("got %v, want %v — a retraction suppresses its attribute rather than "+
@@ -293,8 +293,8 @@ func TestEveryOperatorFilters(t *testing.T) {
 		{`v >= 5`, true}, {`v >= 6`, false},
 	}
 	for _, c := range cases {
-		src := `SELECT * FROM planet-3 WHERE ` + c.predicate
-		rows, err := Select(context.Background(), r, parseSelect(t, src), 1000)
+		src := `READ * FROM planet-3 WHERE ` + c.predicate
+		rows, err := Read(context.Background(), r, parseRead(t, src), 1000)
 		if err != nil {
 			t.Errorf("%s: %v", src, err)
 			continue
@@ -328,18 +328,18 @@ func TestASelectRunsAgainstARealLeaf(t *testing.T) {
 	// ★ The port is the contract. The same statement, against a real leaf on a
 	// disk rather than the fake, must give the same answer — otherwise the tests
 	// above are asserting the fake's shape.
-	sel := parseSelect(t, `SELECT * FROM planet-3 WHERE mass = 5`)
-	rows, err := Select(ctx, store, sel, 1000)
+	sel := parseRead(t, `READ * FROM planet-3 WHERE mass = 5`)
+	rows, err := Read(ctx, store, sel, 1000)
 	if err != nil {
-		t.Fatalf("Select against a leaf: %v", err)
+		t.Fatalf("Read against a leaf: %v", err)
 	}
 	if want := []string{"mass=5", "radius=6371"}; !equal(rowStrings(rows), want) {
 		t.Errorf("got %v, want %v", rowStrings(rows), want)
 	}
 
-	narrow, err := Select(ctx, store, parseSelect(t, `SELECT * FROM planet-3 WHERE mass = 999`), 1000)
+	narrow, err := Read(ctx, store, parseRead(t, `READ * FROM planet-3 WHERE mass = 999`), 1000)
 	if err != nil {
-		t.Fatalf("Select against a leaf: %v", err)
+		t.Fatalf("Read against a leaf: %v", err)
 	}
 	if len(narrow) != 0 {
 		t.Errorf("a WHERE that matches nothing returned %v against a real leaf", rowStrings(narrow))

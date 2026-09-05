@@ -324,7 +324,7 @@ func (s *Store) Attributes(ctx context.Context, entity string, at ports.Snapshot
 // Entities returns the entities this leaf holds, sorted and without duplicates.
 //
 // ★ It is a directory listing of one leaf, not the enumeration `BACKLOG.md` §20
-// defers. That one is `SELECT` over entities nobody named, across leaves, and it
+// defers. That one is `READ` over entities nobody named, across leaves, and it
 // needs a planner and a routing decision. The two look alike from the outside,
 // which is exactly why the difference is written down.
 func (s *Store) Entities() ([]string, error) {

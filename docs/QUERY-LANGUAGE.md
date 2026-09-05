@@ -2,12 +2,12 @@
 
 One idea carries the whole design: **time is a clause, not a family of verbs.**
 
-Everything else follows. There is no `SELECT_HISTORY`, no `AS_OF_SELECT`, no
-`MATCH_AT`. There is `SELECT`, there is `MATCH SHAPE`, and either may carry a
+Everything else follows. There is no `READ_HISTORY`, no `AS_OF_READ`, no
+`MATCH_AT`. There is `READ`, there is `MATCH SHAPE`, and either may carry a
 time qualifier — including one per leg of a shape, which costs nothing extra
 precisely because the qualifier is a clause rather than part of a verb's name.
 
-> **Status.** `SELECT`, `ASSERT`, `RETRACT`, `SEARCH` and `TRAVERSE` **run** —
+> **Status.** `READ`, `ASSERT`, `RETRACT`, `SEARCH` and `TRAVERSE` **run** —
 > against a session, and with `--dir` against a leaf on a disk that outlives the
 > process. `MATCH SHAPE` parses and is refused by name, because a similarity
 > metric chosen against no corpus is a number nobody has reason to believe
@@ -35,7 +35,7 @@ is enforced rather than claimed — see [Documentation coverage](#documentation-
 
 **The programmatic API**
 - [Parsing](#parsing)
-- [`Select` and `Predicate`](#select-and-predicate)
+- [`Read` and `Predicate`](#read-and-predicate)
 - [`TimeClause`](#timeclause)
 - [`ShapeQuery`, `Leg` and `LegKind`](#shapequery-leg-and-legkind)
 - [The result model: `Row` and `Binding`](#the-result-model-row-and-binding)
@@ -57,19 +57,30 @@ There are exactly three, and `Parse` accepts nothing else:
 
 | Statement | Keyword it starts with | Compiles to |
 |---|---|---|
-| Read an entity's attributes | `SELECT` | `*Select` |
+| Read an entity's attributes | `READ` | `*Read` |
 | Find resembling subjects | `MATCH` | `*ShapeQuery` |
 | Find entities by their text | `SEARCH` | `*Search` |
 | State that a fact held | `ASSERT` | `*Write` |
 | State that a fact stopped holding | `RETRACT` | `*Write` |
 | Walk the links out of an entity | `TRAVERSE` | `*Traverse` |
 
-Anything else is refused at the first token with `expected SELECT or MATCH`. A
-statement must also be *complete* — trailing tokens are refused with
-`expected end of statement`, rather than silently ignored:
+Anything else is refused at the first token with
+`expected READ, MATCH, SEARCH, ASSERT, RETRACT or TRAVERSE`. A statement must
+also be *complete* — trailing tokens are refused with `expected end of
+statement`, rather than silently ignored:
 
 ```sql
-SELECT * FROM planet-7 rubbish     -- refused: expected end of statement
+READ * FROM planet-7 rubbish       -- refused: expected end of statement
+```
+
+⚠ **`SELECT` is reserved and refused by name.** It was the verb until ADR-034,
+and it is kept in the keyword table for exactly one purpose: so that typing it
+says what to type instead. It is not an alias — one verb has one spelling. The
+refusal matches `errors.Is(err, ql.ErrSelectRenamed)`, so a caller can recognise
+it without comparing message text:
+
+```sql
+SELECT * FROM planet-7             -- refused: SELECT was renamed to READ
 ```
 
 A storage policy (`WITH COMPRESSION …`) is a **clause**, not a statement; it is
@@ -80,30 +91,30 @@ parsed separately. See [Storage policy](#storage-policy).
 Project every attribute with `*`:
 
 ```sql
-SELECT * FROM planet-7
+READ * FROM planet-7
 ```
 
 Or name them, comma-separated:
 
 ```sql
-SELECT mass FROM planet-7
-SELECT mass, radius, discovered_by FROM planet-7
+READ mass FROM planet-7
+READ mass, radius, discovered_by FROM planet-7
 ```
 
-Keywords are case-insensitive, so `select * from planet-7` is the same
+Keywords are case-insensitive, so `read * from planet-7` is the same
 statement. Identifiers are case-**sensitive**.
 
-⚠ `*` and a named list are the only two projections. There is no `SELECT` with an
-empty list, and no way to mix them (`SELECT *, mass` is refused).
+⚠ `*` and a named list are the only two projections. There is no `READ` with an
+empty list, and no way to mix them (`READ *, mass` is refused).
 
 ## Filtering
 
 ```sql
-SELECT * FROM planet-7 WHERE mass > 1000
-SELECT name FROM planet-7 WHERE class = 'terrestrial'
-SELECT * FROM planet-7 WHERE class != "gas giant"
-SELECT * FROM planet-7 WHERE mass >= -40.5
-SELECT * FROM planet-7 WHERE status = active
+READ * FROM planet-7 WHERE mass > 1000
+READ name FROM planet-7 WHERE class = 'terrestrial'
+READ * FROM planet-7 WHERE class != "gas giant"
+READ * FROM planet-7 WHERE mass >= -40.5
+READ * FROM planet-7 WHERE status = active
 ```
 
 Operators, all of them:
@@ -129,9 +140,9 @@ one you meant would answer the wrong one some of the time.
 Two independent qualifiers, each optional, in this order:
 
 ```sql
-SELECT * FROM planet-7 AS OF 1700000000
-SELECT * FROM planet-7 TRANSACTION 1700000500
-SELECT * FROM planet-7 AS OF 1700000000 TRANSACTION 1700000500
+READ * FROM planet-7 AS OF 1700000000
+READ * FROM planet-7 TRANSACTION 1700000500
+READ * FROM planet-7 AS OF 1700000000 TRANSACTION 1700000500
 ```
 
 - **`AS OF t`** asks about **valid time** — when the fact was true in the world.
@@ -165,8 +176,8 @@ This is the thing bitemporality exists for, and you can run it:
 go run ./cmd/sdev1-ql --clock 1000 \
   --statements "ASSERT planet-7 mass = 5972 VALID FROM 100" \
   --statements "ASSERT planet-7 mass = 6000 VALID FROM 100" \
-  --statements "SELECT mass FROM planet-7 AS OF 150" \
-  --statements "SELECT mass FROM planet-7 AS OF 150 TRANSACTION 1001"
+  --statements "READ mass FROM planet-7 AS OF 150" \
+  --statements "READ mass FROM planet-7 AS OF 150 TRANSACTION 1001"
 ```
 
 ```
@@ -175,10 +186,10 @@ ASSERT planet-7 mass = 5972 VALID FROM 100
 ASSERT planet-7 mass = 6000 VALID FROM 100
   txn     1001.0@1:00#2
 
-SELECT mass FROM planet-7 AS OF 150
+READ mass FROM planet-7 AS OF 150
   planet-7   mass         6000
 
-SELECT mass FROM planet-7 AS OF 150 TRANSACTION 1001
+READ mass FROM planet-7 AS OF 150 TRANSACTION 1001
   planet-7   mass         5972
 ```
 
@@ -202,7 +213,7 @@ go run ./cmd/sdev1-ql --dir ./leaf --clock 1000 \
   --statements 'ASSERT planet-3 mass = "5.97e24"'
 
 go run ./cmd/sdev1-ql --dir ./leaf --clock 5000 \
-  --statements 'SELECT * FROM planet-3'
+  --statements 'READ * FROM planet-3'
 ```
 
 The second run prints `5.97e24`. It is a different process; nothing was carried
@@ -455,7 +466,7 @@ value that means it — `PolicyScopes()` returns exactly one element.
 As implemented, in EBNF:
 
 ```ebnf
-statement   = select | shape | search | write | traverse ;
+statement   = read | shape | search | write | traverse ;
 
 write       = ( "ASSERT" | "RETRACT" ) ident ident "=" writevalue
               [ "VALID" "FROM" number [ "TO" number ] ] ;
@@ -467,7 +478,7 @@ reference   = "->" ident ;
 traverse    = "TRAVERSE" ident "DEPTH" number timeclause ;
               (* ONE clause for the whole walk; no per-hop qualifier exists *)
 
-select      = "SELECT" projection "FROM" ident
+read        = "READ" projection "FROM" ident
               [ "WHERE" predicate ]
               timeclause ;
 
@@ -510,23 +521,27 @@ codec       = "none" | "identity" | "zstd" ;
 | string | `KindString` | `'single'` or `"double"` quoted; `Token.Text` excludes the quotes |
 | punctuation | `KindPunct` | Any other single rune, or one of the two-character operators `>=` `<=` `!=` `==` |
 
-**The twenty-five keywords**, all reserved:
+**The twenty-six keywords**, all reserved:
 
 ```
-SELECT  FROM  WHERE  AS  OF  TRANSACTION  MATCH
+READ    FROM  WHERE  AS  OF  TRANSACTION  MATCH
 SHAPE   LIKE  REQUIRE  OPTIONAL  SIMILARITY  WITH  COMPRESSION
 SEARCH  IN  FACET  BY  LIMIT
 ASSERT  RETRACT  VALID  TO
 TRAVERSE  DEPTH
+SELECT
 ```
+
+⚠ `SELECT` names no statement. It is reserved so that typing the old verb is
+refused by name rather than lexing as an attribute; see [Statements](#statements).
 
 ### Quoting an identifier
 
 Keywords are reserved everywhere — but **backticks make any word an identifier**:
 
 ```sql
-SELECT `limit`, `in` FROM planet-7
-SELECT * FROM planet-7 WHERE `select` = 'yes'
+READ `limit`, `in` FROM planet-7
+READ * FROM planet-7 WHERE `select` = 'yes'
 ```
 
 The keyword table is never consulted inside backticks, and the quotes are not
@@ -569,22 +584,22 @@ func Parse(src string) (Statement, error)
 ```
 
 `Statement` is a sealed interface — it has an unexported method, so the only
-implementations are `*Select` and `*ShapeQuery`, and a type switch over the two
+implementations are `*Read` and `*ShapeQuery`, and a type switch over the two
 is exhaustive by construction:
 
 ```go
 switch s := stmt.(type) {
-case *Select:
+case *Read:
 	// …
 case *ShapeQuery:
 	// …
 }
 ```
 
-## `Select` and `Predicate`
+## `Read` and `Predicate`
 
 ```go
-type Select struct {
+type Read struct {
 	Attributes []string   // the projection; EMPTY means every attribute
 	Entity     string     // what is being read
 	Where      *Predicate // nil when there was no WHERE
@@ -592,7 +607,7 @@ type Select struct {
 }
 ```
 
-⚠ `Attributes` being empty is how `SELECT *` is represented. There is no separate
+⚠ `Attributes` being empty is how `READ *` is represented. There is no separate
 "star" flag, so a consumer must treat empty as *all* rather than as *none*.
 
 ```go
@@ -857,7 +872,7 @@ type Token struct {
 	Pos  int    // byte offset
 }
 
-func (t Token) String() string   // e.g. `keyword "SELECT"`, or `end of input`
+func (t Token) String() string   // e.g. `keyword "READ"`, or `end of input`
 ```
 
 ```go
@@ -919,10 +934,10 @@ with a reason, and none is a gap someone forgot.
 | Not expressible | Why |
 |---|---|
 | `AND` / `OR` / parentheses in `WHERE` | One predicate is what the evaluator will first have to satisfy. Compound predicates are a language extension to make once there is something to run them against, rather than a grammar to guess at now. |
-| More than one entity per `SELECT` | The entity is the transaction boundary. A cross-entity read is a read over a snapshot, and what a snapshot spans is a decision the storage engine has to make first. |
+| More than one entity per `READ` | The entity is the transaction boundary. A cross-entity read is a read over a snapshot, and what a snapshot spans is a decision the storage engine has to make first. |
 | Joins | Same reason, one step further out. |
 | Enumerating entities | The language reads a **named** entity. An unbounded listing over a planetary key space is not something a single result can return, so the shape of that answer is a real decision rather than a missing keyword. |
-| Ordering or limiting a `SELECT` | There is nothing to order by. A `SELECT` reads one named entity, so its result has no ranking, and `ORDER BY` before an evaluator exists would be guessing at a cost model. ⚠ADR-021 lifts this for `SEARCH`, where ranking exists and an unranked, unlimited search is a full scan with extra steps. The statement itself is `pending` — `BACKLOG.md` §27. |
+| Ordering or limiting a `READ` | There is nothing to order by. A `READ` reads one named entity, so its result has no ranking, and `ORDER BY` before an evaluator exists would be guessing at a cost model. ⚠ADR-021 lifts this for `SEARCH`, where ranking exists and an unranked, unlimited search is a full scan with extra steps. The statement itself is `pending` — `BACKLOG.md` §27. |
 | Aggregation — `COUNT`, `SUM` | Not in the language. ⚠The one counting a caller can ask for is a FACET over a search result, decided in ADR-021: exact or refused, never estimated. Also `pending` on §27. |
 | ~~Full-text search~~ | **`SEARCH` now parses** and runs against an in-memory index with deterministic ranking. What is still missing is a PERSISTED index and confirmation of candidates against the datoms (`BACKLOG.md` §27 and §20), so a result today reflects what the index believes rather than what is true. |
 | Query syntax inside the search text | Phrases, negation and wildcards are undecided. The text is taken as written and analysed by the same analyzer the index used. |

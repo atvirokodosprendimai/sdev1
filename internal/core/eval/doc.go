@@ -8,10 +8,10 @@
 // ⚠ A clause the parser accepts is EVALUATED or REFUSED BY NAME. It is never
 // ignored.
 //
-// That is not a style preference. `Select.Where` was parsed from ADR-011 onward
+// That is not a style preference. `Read.Where` was parsed from ADR-011 onward
 // and evaluated nowhere, so this ran and answered:
 //
-//	SELECT * FROM planet-3 WHERE mass = "999"
+//	READ * FROM planet-3 WHERE mass = "999"
 //	  planet-3   mass         5
 //	  planet-3   radius       6371
 //
@@ -20,7 +20,7 @@
 // answered. ★ A refusal is an answer a caller can act on; a filtered result that
 // was never filtered is not.
 //
-// # How a SELECT is evaluated
+// # How a READ is evaluated
 //
 //  1. The time clause is resolved ONCE.
 //  2. The named entity is loaded ONCE, at that snapshot.
@@ -32,7 +32,7 @@
 //  6. The projection is applied last.
 //
 // ⚠ Steps 5 and 6 are in that order and the obvious order is the other one.
-// `SELECT name FROM planet-7 WHERE class = 'terrestrial'` is in the published
+// `READ name FROM planet-7 WHERE class = 'terrestrial'` is in the published
 // guide, so a predicate must be able to name an attribute the projection does not
 // return — narrowing first leaves nothing to test against, and the query silently
 // returns nothing.
@@ -49,7 +49,7 @@
 //
 // # What it takes, and what it does not
 //
-// [Select] takes an INSTANT, not a clock. Reading a clock twice inside one
+// [Read] takes an INSTANT, not a clock. Reading a clock twice inside one
 // statement is therefore not expressible — the defect ADR-023 fixed for
 // traversal, arriving from a different direction.
 //
