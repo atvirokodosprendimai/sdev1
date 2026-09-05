@@ -602,21 +602,41 @@ task files.
 ADR-018 decides WHICH fragments a read should ask for and whether it may. Three
 things past that are open, and they interact.
 
-**The cache.** Fetched blocks have to live somewhere and be found again. ⚠ The
-constraint ADR-018 imposes must survive: a read must still work with every
-prefetched block evicted. If it stops working, the prefetch has become
-load-bearing and the failure appears only under memory pressure — which is
+**The cache.** ~~Fetched blocks have to live somewhere and be found again.~~
+**Answered by ADR-037** (`docs/adr/ADR-037-block-cache.md`): `prefetch.Cache`,
+bounded in BYTES. ⚠ The constraint below survives and is now the record's
+falsifier: a read must still work with every prefetched block evicted, and
+`TestEvictingEverythingChangesNoAnswer` empties the cache before every read of a
+sequence and requires the same answers. If it stops working, the prefetch has
+become load-bearing and the failure appears only under memory pressure — which is
 precisely when eviction happens, so the bug and its trigger arrive together.
 
-**Eviction.** Least-recently-used is the obvious answer and it is wrong for a
+**Eviction.** ~~Least-recently-used is the obvious answer and it is wrong for a
 sequential scan, which evicts exactly what it is about to read. A scan-resistant
-policy is a real decision and it needs a workload to choose against.
+policy is a real decision and it needs a workload to choose against.~~
+**Half-answered by ADR-037, and the half that was wrong is worth naming.**
+Choosing among ARC, 2Q and CLOCK-Pro does need a workload. The ordering underneath
+them does not: ★ a prefetched block is a GUESS and a demanded block is EVIDENCE,
+and evicting evidence to keep guesses is wrong on every workload. ADR-037 evicts
+speculative entries first, least-recently-used within each class, and PROMOTES a
+speculative entry that is read.
+
+⚠ **Still open:** everything the ordering does not cover. Two speculative entries
+are ranked only by recency, so a scan still evicts its own useful guesses, and
+nothing tells "read once" from "read repeatedly". That is what a workload would
+let us fix, and it is where ARC would earn its complexity.
 
 **When to prefetch at all.** Prefetching a random-access read is pure waste: it
 pulls `k` fragments per block for blocks nobody will ask for, and it spends the
 read budget doing it. Detecting sequentiality is the usual answer and it is a
 heuristic — so it will be wrong sometimes, and what it costs when wrong is the
 part worth deciding rather than the detection itself.
+
+★ **The cost is now decided, and the detection is still open.** ADR-037 rule 6
+bounds what a wrong guess may cost: bandwidth already counted against the read
+budget (ADR-018 rule 7), plus ZERO demanded evictions — a bad prefetch cannot take
+another reader's working set. So the deferred detection is a deferred
+optimisation rather than a deferred risk.
 
 **And the balance tension ADR-018 recorded.** Choosing the nearest `k` is right
 for latency and wrong for load distribution: every reader near a node picks the
