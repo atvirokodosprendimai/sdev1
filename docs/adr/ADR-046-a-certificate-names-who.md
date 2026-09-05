@@ -7,7 +7,7 @@
 **Cross-references:** `docs/adr/README.md`, `docs/adr/ADR-001-address-space.md`, `docs/adr/ADR-008-prefix-routing.md`, `docs/adr/ADR-016-tenant-prefix.md`, `docs/adr/ADR-033-grants-and-tenant-allocation.md`, `docs/adr/ADR-043-response-envelope.md`, `docs/adr/ADR-045-a-leaf-is-served-over-a-stream.md`, `docs/adr/BACKLOG.md`
 **Governs:** `internal/core/serve/**`
 **Enforced-by:** `internal/core/serve/authn_test.go::TestRevocationReachesALiveCertificate`
-**Invalidates:** none — ADR-033 deferred the enforcement point for want of a caller identity, and ADR-045 recorded that nothing authenticates; both deferrals are closed here rather than contradicted
+**Invalidates:** ⚠ **ADR-045 rule 7** — "one request per connection, closed after" becomes *one request in flight* per connection, and both ends now serve sequential exchanges over one. ADR-033's and ADR-045's authentication deferrals are closed rather than contradicted
 **Served-path change:** A read over the wire now requires a client certificate and a live grant, and a client reuses a connection instead of dialling per request. An unauthenticated caller that could read any leaf a node held gets a TLS handshake failure instead.
 
 ## Context
@@ -134,11 +134,23 @@ reused only while its stream state is known.**
    nothing can verify, and the first frame read from the wrong offset is a length
    prefix a stranger's bytes chose.
 
-8. **Still ONE exchange in flight per connection.** Pooling reuses a connection
-   *sequentially*; it does not interleave. ★ ADR-045 rule 7's failure model
-   survives intact — no correlation identifiers, nothing to reconcile after a
-   drop — and what is saved is the handshake, which is the part TLS made
-   expensive.
+8. **Still ONE exchange in flight per connection — but no longer one exchange
+   per connection.** ⚠ **This AMENDS ADR-045 rule 7, and pretending otherwise
+   would be the dishonest version.** That rule was two claims wearing one
+   sentence: *one in flight* (no correlation identifiers, nothing to reconcile
+   after a drop) and *one in total* (the stream can never be half-consumed,
+   because it is never used twice). The first is kept and is what rules out
+   multiplexing. The second is given up — deliberately, because it is what the
+   handshake is being paid for — and rule 7 above is what replaces it. ★ The
+   difference is that "the stream is at a frame boundary" changes from a property
+   you get for free into one you must *maintain*, and maintaining it is exactly
+   "discard on any error".
+
+   ⚠ **Both ends change.** A server that closed after one exchange would make
+   client-side pooling useless — the client would keep a connection its peer had
+   already hung up, and every second read would fail before succeeding on a
+   redial. So the server reads requests in a loop until the connection ends or a
+   deadline passes.
 
 9. ⚠ **The pool's bounds are DECLARED, never defaulted** — idle count and idle
    lifetime. The same discipline as ADR-045's frame bound, for the same reason:

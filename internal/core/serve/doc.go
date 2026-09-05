@@ -44,19 +44,46 @@
 // unbuilt — so a write served here would be unfenced (ADR-009) and committed at a
 // durability nobody has (ADR-020). Refusing is the only honest answer available.
 //
-// # One request per connection
+// # One request IN FLIGHT per connection
 //
-// Accept, set both deadlines, read one framed request, write one response, close.
-// No pooling and no multiplexing.
+// ⚠ **Not one request per connection — ADR-046 amended that.** ADR-045 rule 7
+// was two claims wearing one sentence: *one in flight*, so there are no
+// correlation identifiers and nothing to reconcile after a drop; and *one in
+// total*, so the stream could never be half-consumed because it was never used
+// twice. The first is kept and is what still rules out multiplexing. The second
+// is given up deliberately, because TLS turned a connection from a TCP handshake
+// into asymmetric crypto on both sides, and that is the cost pooling exists to
+// pay once instead of per read.
 //
-// ⚠ Deadlines are set PER CONNECTION, not on the listener. A listener deadline
-// bounds `Accept`, and the goroutine a stranger can pin forever is the one after
-// it.
+// ★ So "the stream is at a frame boundary" stopped being free and became
+// something to MAINTAIN. [Pool] is the type that maintains it, and the rule is
+// one sentence: a connection goes back only after a COMPLETE, successfully
+// decoded exchange.
 //
-// A connection carrying exactly one exchange has a failure model with nothing in
-// it: no half-consumed stream, no correlation identifiers, nothing to reconcile
-// after a drop. It is a real cost per read, taken deliberately, and the first
-// thing to revisit once docs/adr/BACKLOG.md §16 can measure it.
+// ⚠ The case worth stating is a DECODE error, because it is the one that gets
+// kept by accident. The transport read succeeded, so it reads like a caller-side
+// problem — and it is not: "these bytes were not what was expected" is the same
+// information as "where the next frame begins is unknown". Reading from an
+// unknown offset means taking a length prefix out of the middle of somebody
+// else's payload, and that prefix is the one number ADR-045 bounds precisely
+// because a stranger chooses it.
+//
+// ⚠ Both ends changed. The server serves exchanges in a LOOP; one that closed
+// after a single exchange would make client-side pooling worse than useless,
+// since the client would keep a connection its peer had already hung up and pay
+// a failed write plus a redial on every second read.
+//
+// ★ There is exactly ONE retry in this package, and it is not a cluster policy:
+// a write that fails on a REUSED connection before any byte left is the pool
+// admitting its own cache went stale. It never extends to a failure after the
+// request was sent — that request may have been served, and re-sending it would
+// be this transport inventing a policy `routing.Resolve` alone is allowed to own.
+//
+// ⚠ Deadlines are set PER CONNECTION and RESET PER EXCHANGE, never on the
+// listener. A listener deadline bounds `Accept`, and the goroutine a stranger can
+// pin forever is the one after it; a deadline set once before the loop would let
+// a peer hold that goroutine for as long as the first read allowed, however many
+// requests followed.
 //
 // # The certificate says WHO; the grant set says WHAT
 //

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/atvirokodosprendimai/sdev1/internal/core/addr"
@@ -97,7 +98,20 @@ type Server struct {
 	// failed Accept is an ordinary shutdown rather than a fault.
 	closing chan struct{}
 	once    sync.Once
+
+	// accepted counts connections, which is the same thing as counting
+	// handshakes. ★ It is the only honest measure of whether a client's pool is
+	// working: the pool's own length would look correct for a pool that stores
+	// connections and hands them out to nobody.
+	accepted atomic.Int64
 }
+
+// Accepted is how many connections this node has accepted since it started.
+//
+// ★ One accept is one TLS handshake, which after ADR-046 is asymmetric crypto on
+// both sides — so this is the number a client's connection pool exists to hold
+// down, and the number that says whether it does.
+func (s *Server) Accepted() int64 { return s.accepted.Load() }
 
 // NewServer validates the options and binds the listener.
 //
@@ -172,6 +186,7 @@ func (s *Server) Serve(ctx context.Context) error {
 				return fmt.Errorf("serve: accepting: %w", err)
 			}
 		}
+		s.accepted.Add(1)
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
@@ -191,52 +206,78 @@ func (s *Server) Close() error {
 	return err
 }
 
-// handle runs exactly one exchange and closes the connection.
+// handle serves exchanges on one connection until it ends.
 //
-// ⚠ The deadlines go on the CONNECTION. A listener deadline bounds Accept, and
-// the goroutine a stranger can pin forever is this one.
+// ⚠ **A LOOP, not one exchange** — this is where ADR-046 amends ADR-045 rule 7.
+// One request is still in FLIGHT at a time, which is what keeps correlation
+// identifiers unnecessary; what changed is that the connection is not thrown
+// away afterwards. A server that closed after one would make the client's pool
+// worse than useless: the client would keep a connection its peer had already
+// hung up, and pay a failed write plus a redial on every second read.
+//
+// ⚠ The deadlines go on the CONNECTION and are RESET PER EXCHANGE. A listener
+// deadline bounds Accept, and the goroutine a stranger can pin forever is this
+// one — a deadline set once before the loop would let a peer hold it for exactly
+// as long as the first read allowed, no matter how many requests followed.
 func (s *Server) handle(ctx context.Context, conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 
-	if err := conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout)); err != nil {
-		return
-	}
-
-	// ★ Who is calling, before anything is read from them. The handshake has
-	// already proved a chain to the declared authority — this is the second half
-	// of rule 1, that a verified chain naming NOBODY is refused rather than
-	// admitted as an anonymous caller.
+	// ★ Who is calling, once per connection rather than once per request. The
+	// handshake has already proved a chain to the declared authority — this is
+	// the second half of rule 1, that a verified chain naming NOBODY is refused
+	// rather than admitted as an anonymous caller.
 	//
 	// ⚠ Nothing is sent back, for the same reason a bad frame gets no reply: a
 	// peer that cannot name itself has not shown it speaks this protocol.
+	if err := conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout)); err != nil {
+		return
+	}
 	if _, err := s.principalOf(conn); err != nil {
 		return
 	}
-	payload, err := wire.ReadFrame(conn, s.opts.MaxFrame)
-	if err != nil {
-		// ⚠ Nothing is sent back. A frame that could not be read may not have
-		// come from something that speaks this protocol at all, and a reply
-		// would be a reflection an unbounded number of strangers can aim.
-		return
+
+	for {
+		// ⚠ Reset before EVERY read. An idle pooled connection is supposed to sit
+		// here waiting, and the deadline is what stops it sitting forever.
+		if err := conn.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout)); err != nil {
+			return
+		}
+		payload, err := wire.ReadFrame(conn, s.opts.MaxFrame)
+		if err != nil {
+			// ⚠ Nothing is sent back. A frame that could not be read may not
+			// have come from something that speaks this protocol at all, and a
+			// reply would be a reflection an unbounded number of strangers can
+			// aim. An ordinary close arrives here too, which is how the loop
+			// ends.
+			return
+		}
+		req, err := wire.DecodeRequest(payload)
+		if err != nil {
+			// ★ The refusal is sent and the connection ENDS. The frame was
+			// well-formed, so the stream is at a boundary and could be reused —
+			// but a peer that sent an undecodable request has disagreed with us
+			// about the protocol, and continuing assumes the disagreement was
+			// isolated.
+			s.reply(conn, &wire.Refusal{Reason: fmt.Sprintf("serve: %v", err)})
+			return
+		}
+		if !s.reply(conn, s.answer(ctx, req)) {
+			return
+		}
 	}
-	req, err := wire.DecodeRequest(payload)
-	if err != nil {
-		s.reply(conn, &wire.Refusal{Reason: fmt.Sprintf("serve: %v", err)})
-		return
-	}
-	s.reply(conn, s.answer(ctx, req))
 }
 
-// reply writes one response under the write deadline.
-func (s *Server) reply(conn net.Conn, resp wire.Response) {
+// reply writes one response under the write deadline, and reports whether the
+// connection is still usable.
+func (s *Server) reply(conn net.Conn, resp wire.Response) bool {
 	if err := conn.SetWriteDeadline(time.Now().Add(s.opts.WriteTimeout)); err != nil {
-		return
+		return false
 	}
 	body, err := wire.Encode(resp)
 	if err != nil {
-		return
+		return false
 	}
-	_ = wire.WriteFrame(conn, body, s.opts.MaxFrame)
+	return wire.WriteFrame(conn, body, s.opts.MaxFrame) == nil
 }
 
 // answer decides what one request gets, and is the whole of ADR-045 rule 2.

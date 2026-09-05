@@ -34,12 +34,19 @@ func clientWithTLS(t *testing.T, seed routing.Route, budget int, conf serve.TLSC
 		WriteTimeout: 5 * time.Second,
 		MaxFrame:     wire.MaxFrame,
 		TLS:          conf,
+		Pool:         PoolBoundsForTest,
 	})
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
+	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
+
+// PoolBoundsForTest is what an ordinary test uses when the pool is not what it is
+// about. ⚠ The timeout is long enough that nothing ages out mid-test; the tests
+// that are ABOUT ageing inject a clock instead of shortening it.
+var PoolBoundsForTest = serve.PoolBounds{MaxIdlePerNode: 4, IdleTimeout: time.Minute}
 
 // TestAStaleClientIsRedirectedAndRepaired is ADR-045's falsifier.
 //

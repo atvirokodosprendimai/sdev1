@@ -60,6 +60,15 @@ func node(t *testing.T, holds addr.LeafID, table *routing.Table, seed ...ports.D
 func nodeWithTLS(t *testing.T, holds addr.LeafID, table *routing.Table,
 	conf serve.TLSConfig, seed ...ports.Datom) string {
 	t.Helper()
+	srv, _ := serverWithTLS(t, holds, table, conf, seed...)
+	return srv
+}
+
+// serverWithTLS is nodeWithTLS that also hands back the server, for a test that
+// needs to ask it how many connections it accepted.
+func serverWithTLS(t *testing.T, holds addr.LeafID, table *routing.Table,
+	conf serve.TLSConfig, seed ...ports.Datom) (string, *serve.Server) {
+	t.Helper()
 
 	store, err := leafstore.Open(t.TempDir(), holds)
 	if err != nil {
@@ -95,7 +104,7 @@ func nodeWithTLS(t *testing.T, holds addr.LeafID, table *routing.Table,
 	t.Cleanup(func() { _ = srv.Close() })
 
 	go func() { _ = srv.Serve(ctx) }()
-	return srv.Addr()
+	return srv.Addr(), srv
 }
 
 // ask runs one exchange the way ADR-045 says a connection is used: dial, one
