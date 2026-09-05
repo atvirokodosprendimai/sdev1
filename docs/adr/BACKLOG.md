@@ -721,7 +721,7 @@ repair work stays withdrawn and keeps refusing user reads. What bounds that is a
 bound on repair traffic — §3, still open. ADR-039 rule 7 names §3 as the owner
 rather than inventing a cap nobody can justify.
 
-### §23 — Nothing bounds how long acknowledged data stays unflushed
+### §23 — The unflushed window is measured and bounded; nothing flushes yet
 
 **Source:** ADR-020 (`docs/adr/ADR-020-commit-point.md`), Out of Scope and its
 Consequences; and both its task files.
@@ -735,20 +735,48 @@ failures and not correlated ones. The size of that window is how long a block
 takes to fill and be flushed — which depends on write rate, block size and the
 sealing trigger (§15), none of which is decided.
 
-**What bounds it.** A time bound ("flush at least every N seconds") and a size
-bound ("flush at least every N bytes") answer different questions, and a quiet
-tenant needs the first while a busy one needs the second. Whatever closes this
-probably needs both, and the pair is a decision rather than two constants.
+**What bounds it.** ~~Whatever closes this probably needs both, and the pair is a
+decision rather than two constants.~~ **Answered by ADR-041**
+(`docs/adr/ADR-041-unflushed-exposure.md`): `commit.Bound` requires BOTH halves
+and refuses either alone with `ErrIncompleteBound`.
 
-**What reports it.** ADR-020's `Pending` counts entries written and not yet
-committed. Nothing counts entries COMMITTED and not yet flushed, which is the
-actual exposure — and that number is what an operator wants during a power
-event, not afterwards.
+★ And the reason is exactly the one below, made precise: size-only leaves a QUIET
+tenant unbounded in TIME, because its single committed entry never reaches the
+size; age-only leaves a BUSY one unbounded in BYTES, because an arbitrary volume
+fits inside the interval. Neither alone bounds anything. ⚠ This deliberately
+differs from ADR-028's sealing policy, which requires at least one — a sealing
+policy with one bound still seals.
+
+**What reports it.** ~~ADR-020's `Pending` counts entries written and not yet
+committed. Nothing counts entries COMMITTED and not yet flushed.~~ **Answered:**
+`commit.Meter` does, and the record keeps the two windows apart — `Pending` is
+data nobody was promised, and the exposure is a promise that could still be
+broken.
 
 ⚠ The trap is stating the window as an average. The number that matters is the
 worst case at the moment the power goes, which correlates with load — so the
 exposure is largest exactly when a correlated failure is most likely, and an
 average hides that completely.
+
+★ **Answered, and the instantaneous reading turned out to have the same defect
+one step removed:** asked after a burst it reports the calm. `Meter.Peak` reports
+what the window REACHED, alongside `Current`.
+
+⚠ **And a mutant found that the first design made that peak VACUOUS.** Tracking
+the window as a running total that only a full flush could reset means it never
+falls, so the peak and the present value are the same number by construction — a
+safeguard that cannot fail because it cannot differ from what it guards. The fix
+was to the design: a flush is PARTIAL, entries committed while it runs survive it,
+and the peak resets only when the window EMPTIES.
+
+⚠ **Still open: nothing flushes** (§12), so the window's closing edge is supplied
+by a caller that does not exist. And the peak lives in memory, so it dies with the
+process — which is the very event it exists to describe. Exporting it is §21's
+half.
+
+⚠ **Also still open: the two bound VALUES.** ADR-041 requires both and
+deliberately invents neither; what they should be is a property of a deployment's
+hardware and its tolerance for loss.
 
 ### §24 — A block cache exists; when to prefetch, and a better policy, are open
 
