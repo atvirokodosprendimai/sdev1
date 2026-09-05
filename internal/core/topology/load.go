@@ -46,13 +46,22 @@ func Load(r io.Reader) (Map, error) {
 
 	nodes := number(am.Root, levelOf)
 
+	// ⚠ Decoded, never GENERATED. A generation minted here would give the same
+	// file a different identity in every process that read it, which is exactly
+	// the failure a generation exists to fix.
+	generation, err := decodeGeneration(am.Generation)
+	if err != nil {
+		return Map{}, err
+	}
+
 	m := Map{
-		Version: am.Version,
-		Depth:   am.Depth,
-		Levels:  am.Levels,
-		Nodes:   nodes,
-		byName:  make(map[string]int, len(nodes)),
-		byLevel: make([][]int, len(am.Levels)),
+		FormatVersion: am.Version,
+		Generation:    generation,
+		Depth:         am.Depth,
+		Levels:        am.Levels,
+		Nodes:         nodes,
+		byName:        make(map[string]int, len(nodes)),
+		byLevel:       make([][]int, len(am.Levels)),
 	}
 	for i, n := range nodes {
 		m.byName[n.Name] = i

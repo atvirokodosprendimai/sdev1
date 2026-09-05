@@ -140,7 +140,7 @@ genuinely undecided, not because something is missing.
 | **§11** | Tenant identifiers have no allocation, reuse or authorization story. ⚠ Carries the trap that a query `AS OF` a past instant must be authorized by **today's** grants and never that instant's |
 | **§1** | Trie depth policy is fixed at authoring time rather than adaptive |
 | **§2** | Hot-entity write throughput has no mitigation |
-| **§6** | The topology map is not versioned, so historical placement is unresolvable — "which servers held this block last March?" has no answer |
+| **§6** | ✅ mostly done — ADR-032. A map carries a GENERATION (a `tx.TxID`, authored not assigned), and `placement.Resolve` refuses a map that cannot say which it is. ⚠The `Map.Version` field was renamed to `FormatVersion` because it meant the FILE FORMAT and was exactly where somebody would put the identity — every map would then claim the same one forever with nothing failing. What remains: recording the generation in a segment header, which waits on something that actually places a segment |
 | **§7** | Spare servers have no claim or release policy |
 | **§10** | What a cluster does with leaves below the durability floor |
 

@@ -278,7 +278,9 @@ func TestResolveIsStableUnderUnrelatedTopologyChange(t *testing.T) {
 func growFixture(t *testing.T) topology.Map {
 	t.Helper()
 	const src = `{
-	  "version":1,"depth":1,
+	  "version":1,
+	  "generation":"000000003b9aca000000000000010000000000000000000000000000000000000000000000000000000000000200000002",
+	  "depth":1,
 	  "levels":["universe","planet","datacenter","rack","server","disk"],
 	  "root":{"level":"universe","name":"u","children":[
 	    {"level":"planet","name":"earth","children":[

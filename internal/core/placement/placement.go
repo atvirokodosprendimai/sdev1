@@ -16,6 +16,14 @@ import (
 // a depth-1 leaf against a depth-2 map routes it somewhere nobody asked for.
 var ErrDepthMismatch = errors.New("placement: leaf depth does not match the map")
 
+// ErrNoGeneration reports a placement against a map that carries no generation.
+//
+// ⚠ A placement is reproducible only against a map that can be named. A segment
+// written under one map is found by resolving against THAT map, so placing
+// against an unidentified one produces a location nobody can arrive at again —
+// and the failure is silent, because the answer looks exactly like a good one.
+var ErrNoGeneration = errors.New("placement: the map carries no generation, so a placement against it could not be reproduced")
+
 // ErrNoTargets reports a map that declares no placement targets.
 var ErrNoTargets = errors.New("placement: map declares no targets")
 
@@ -52,7 +60,15 @@ var ErrNoTargets = errors.New("placement: map declares no targets")
 //
 // How many of the returned targets actually hold a copy is a durability policy
 // and is deliberately not decided here. Callers take a prefix.
+// ⚠ A map that cannot say WHICH map it is, is refused. A placement is only
+// meaningful against a named generation: a segment written under last year's map
+// is found by resolving against last year's map, and a map with no identity makes
+// that unanswerable in principle. Treating a zero generation as "generation zero"
+// would read as an answer and make every unidentified map the same map.
 func Resolve(leaf addr.LeafID, m topology.Map) ([]string, error) {
+	if !m.Placeable() {
+		return nil, ErrNoGeneration
+	}
 	if leaf.Depth != m.Depth {
 		return nil, fmt.Errorf("%w: leaf is depth %d, map declares %d",
 			ErrDepthMismatch, leaf.Depth, m.Depth)
