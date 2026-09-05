@@ -90,7 +90,7 @@ which is worse than not offering it.
 This is a prerequisite for the independently-scaled read tier the design
 requires, so it is a dependency of that requirement rather than a refinement.
 
-### §6 — The topology map is not versioned, so historical placement is unresolvable
+### §6 — The map carries a generation; retention and per-segment recording are open
 
 **Source:** ADR-001 T3 (`docs/adr/ADR-001-address-space/tasks/T3-placement.md`),
 Stop Condition. Raised 2026-09-04.
@@ -101,13 +101,18 @@ against the map as it stood then — so placement is really a function of
 `(leaf, map version)`, and a segment header must record the version it was placed
 under.
 
-This changes `placement.Resolve`'s signature, so it must be settled **before**
-callers exist rather than after. It also makes the topology map itself a
-time-varying record, which means ADR-002's ordering machinery is what versions it.
+⚠ **THE HEADING WAS STALE AND IS CORRECTED.** It read *"The topology map is not
+versioned"*. **Answered by ADR-032** (`docs/adr/ADR-032-map-generation.md`):
+`topology.Map.Generation` is a `tx.TxID`, so map versions are ordered by ADR-002's
+machinery exactly as this section predicted, and `placement.Resolve` REFUSES a map
+carrying no generation with `ErrNoGeneration` rather than resolving against an
+unidentified one. The signature question this section said must be settled before
+callers exist was settled before callers existed.
 
-What a decision here must answer: whether map versions are ordered by `TxID`, how
-an old map is retained and for how long, and what happens to a segment whose
-placement map has been retired.
+⚠ **Still open, and this section named all of it:** recording in a SEGMENT HEADER
+the generation it was placed under (deferred by ADR-032, and it needs §12's
+layout); how an old map is retained and for how long; and what happens to a
+segment whose placement map has been retired.
 
 ### §7 — Spare servers have no claim or release policy
 
@@ -168,7 +173,7 @@ is evicted from the read path, and how an operator distinguishes "briefly
 degraded during a restart" from "genuinely short of copies", since the two look
 identical for the first few seconds and demand opposite responses.
 
-### §11 — Tenant identifiers have no allocation, reuse or authorization story
+### §11 — Reuse and authorization are decided; allocation is open
 
 **Source:** ADR-016 (`docs/adr/ADR-016-tenant-prefix.md`), Out of Scope and its
 Follow-up.
@@ -176,12 +181,28 @@ Follow-up.
 ADR-016 makes a tenant the leading bytes of a key and therefore a contiguous
 subtree. It does not decide who assigns those bytes.
 
-Two things are genuinely open. **Allocation and reuse:** a reused identifier
-inherits the previous tenant's subtree, including anything marked but not yet
-swept and anything still present in a coded stripe — so reuse is a data-exposure
-question rather than a bookkeeping one, and the safe answer may be that
-identifiers are never reused. **Authorization:** a tenant boundary is usually
-wanted in order to enforce something, and nothing here enforces anything yet.
+⚠ **THE HEADING WAS STALE AND IS CORRECTED.** Two of the three are answered by
+ADR-033 (`docs/adr/ADR-033-grants-and-tenant-allocation.md`).
+
+**Reuse: answered.** ~~The safe answer may be that identifiers are never
+reused.~~ It is: rule 6 says a tenant identifier is NEVER reused, because a
+reused one inherits whatever of the previous tenant's subtree remains, and proving
+otherwise is the enumeration problem ADR-007's design exists to avoid. ⚠ Rule 7
+records the cost that follows — the identifier space is a finite budget of 65,536
+for the life of a deployment, and creating-then-destroying tenants consumes it
+permanently.
+
+**Authorization: answered.** Grants are datoms in reserved tenant `0000`,
+revocation is a retraction, and no grant means refused.
+
+⚠ **Still open: ALLOCATION.** Who assigns an identifier to a new tenant, and under
+what authority — ADR-033 defers it to §19, because it is a cluster-wide decision
+needing consensus.
+
+★ **And the constraint below was not merely carried into the record, it is
+STRUCTURAL there.** `authz.Set.Allow` takes no instant at all, so authorizing
+against the grants in force at a past moment is not a rule somebody must remember
+— it is a question with no parameter to ask it with.
 
 ⚠ One design constraint is already known and should survive into whatever record
 closes this: a query `AS OF` a past instant must be authorized against the
@@ -255,7 +276,7 @@ block being readable from its own bytes, and a filename is not part of the
 block. A layout that puts the codec, the tenant or the version in the path
 recreates exactly the configuration dependency this format refuses.
 
-### §13 — It is undecided whether one compression block may mix subjects
+### §13 — Answered: a compression block holds one subject's datoms
 
 **Source:** ADR-005, raised during implementation of T2.
 
@@ -275,10 +296,25 @@ ciphertext at all, which changes what a block is.
 
 **Read amplification.** Fetching one subject decompresses the whole block.
 
-The answer is likely "a block holds one subject's datoms, and a segment holds
-many blocks", paying compression ratio for the other three. It is written down
-rather than assumed because the format permits either and the cost of learning
-it late is a rewrite of every stored byte.
+~~The answer is likely "a block holds one subject's datoms, and a segment holds
+many blocks", paying compression ratio for the other three.~~ **Answered by
+ADR-030** (`docs/adr/ADR-030-one-subject-per-block.md`), which is exactly that —
+and it found a FOURTH argument this section did not have, stronger than the three
+below.
+
+★ **A shared block is a COMPRESSION ORACLE.** A codec's output size is a function
+of everything inside it, so two subjects in one block make each subject's data a
+probe for the other's: write data you control, observe the block shrink, learn
+about data you do not control. That is a confidentiality property, which is why
+the question was never a tuning one wearing a performance costume.
+
+★ And a fifth: the container already assumed it. ADR-024 keys a block by ONE key
+and `Get` is a lookup; a block holding many subjects would need a key that is a
+range or a list, and finding one subject would stop being a lookup.
+
+The cost is accepted and named: worse compression, because attribute names repeat
+across subjects and a per-block codec can no longer exploit that. `BACKLOG.md`
+§12's interning entry is where that saving is recovered, if it is.
 
 ### §14 — Nothing re-codes existing stripes when the configured scheme changes
 
@@ -315,7 +351,7 @@ recorded in an existing stripe's header in place. The header is what makes that
 stripe readable; a converter that edits it before the fragments beneath it have
 actually changed produces a stripe that describes something that does not exist.
 
-### §15 — Nothing decides when the live tail is sealed, or how an index over it is published
+### §15 — Sealing has a trigger; the tail index and the durability transition are open
 
 **Source:** ADR-017 (`docs/adr/ADR-017-lock-free-read-path.md`), Out of Scope; and
 both its task files.
@@ -324,13 +360,17 @@ ADR-017 makes the live tail readable without locks and ADR-005 makes a sealed
 segment immutable. Neither says how one becomes the other, and two open
 questions sit in that gap.
 
-**When sealing happens.** A size threshold, an age, a transaction count, or an
-operator's instruction — each gives a different tail length, and the tail's
-length is what a reader walks. Sealing too rarely makes reads linear in ingest
-rate; too often makes tiny segments and pays ADR-006's per-stripe overhead on
-almost nothing. It also interacts with ADR-004's tiers: sealing is the moment a
-leaf's data moves from a replicated policy to a coded one, so it is a durability
-transition and not only a layout one.
+**When sealing happens.** ~~A size threshold, an age, a transaction count, or an
+operator's instruction — each gives a different tail length.~~ **Answered for one
+leaf by ADR-028** (`docs/adr/ADR-028-seal-policy.md`): `leafstore.Policy`
+carries `MaxBytes`, `MaxAge` and `MaxSegments`, `ShouldSeal` decides against them,
+and `Exposure` reports what is at stake — and a policy bounding NOTHING is refused
+with `ErrNoBound` rather than silently never sealing.
+
+⚠ **Still open, and this section named it:** sealing is also a DURABILITY
+transition, the moment a leaf's data moves from ADR-004's replicated policy to a
+coded one — not only a layout change. Nothing yet re-codes at that boundary
+(§14), and nothing measures what the transition costs.
 
 **How an index over the tail is published.** Walking a tail to find one subject
 is linear, so an index is wanted — and ADR-017's rule constrains what kind. A
@@ -483,7 +523,7 @@ append. The whole value of an epoch is that the resource refuses correctly while
 knowing nothing about who is alive, and a consensus layer is exactly where
 somebody will be tempted to add a liveness check "for safety".
 
-### §20 — Nothing evaluates a query, plans one, or computes a similarity
+### §20 — A query is evaluated; planning, similarity and the unbounded scan are open
 
 **Source:** ADR-011 (`docs/adr/ADR-011-query-language.md`), Out of Scope; and both
 its task files.
@@ -533,7 +573,7 @@ changing what already-written statements mean.
 `ORDER BY`. ADR-035 fixes ONE member order — entity name — because paging is
 incoherent without a total order, not because that order is the interesting one.
 
-### §21 — Nothing exports, samples, retains or watches the event stream
+### §21 — Watching exists; export, sampling and retention are open
 
 **Source:** ADR-012 (`docs/adr/ADR-012-observability.md`), Out of Scope; and both
 its task files. ADR-010 also defers its purge escalation here.
@@ -593,7 +633,7 @@ real next step rather than a blocked one — and ADR-038 records the rejected
 ⚠ **Also still open: nothing reads the ledger.** There is no console and no
 transport (§18/§25). `Raise` is not yet called on a served path either.
 
-### §22 — Nothing decides what happens when every replica sheds, or which reads matter more
+### §22 — Which reads matter more is decided; the all-withdrawn response is open
 
 **Source:** ADR-015 (`docs/adr/ADR-015-admission-control.md`), Out of Scope; and
 both its task files.
@@ -684,7 +724,7 @@ worst case at the moment the power goes, which correlates with load — so the
 exposure is largest exactly when a correlated failure is most likely, and an
 average hides that completely.
 
-### §24 — Nothing caches a prefetched block, evicts one, or decides when to prefetch at all
+### §24 — A block cache exists; when to prefetch, and a better policy, are open
 
 **Source:** ADR-018 (`docs/adr/ADR-018-read-ahead.md`), Out of Scope; and both its
 task files.
@@ -812,36 +852,48 @@ is what makes a control file impossible there — and refusing such a name would
 make that entity unreachable through the mount, which is a worse failure than a
 name `ls` hides by convention.
 
-### §27 — Nothing builds a search index, ranks a result, or decides what is indexed
+### §27 — The index is built and its rebuild is proven; ranking is open
 
 **Source:** ADR-021 (`docs/adr/ADR-021-search-and-facets.md`), Out of Scope; and
 `ADR-021-search-and-facets/tasks/T2-index-and-grammar.md`.
 
-ADR-021 settles what a posting IS and what a facet may answer. Everything that
-turns that into a working search is open.
+⚠ **THE HEADING WAS STALE AND IS CORRECTED.** It read *"Nothing builds a search
+index, ranks a result, or decides what is indexed"*. Three of those four are done.
 
-**The index itself.** A read model over the datom log, fed by ADR-010's
-subscription. It needs the storage engine (§12) before there is a log to project.
-⚠ The constraint that must survive: a full rebuild from the log must reproduce it
-exactly. That property is what makes losing the index a performance event rather
-than a data-loss event, and it is worth nothing unproven.
+**The index itself.** ~~A read model over the datom log, fed by ADR-010's
+subscription. It needs the storage engine (§12) before there is a log to
+project.~~ **Built:** `search.Index` holds sealed postings, `search.Builder` is a
+`subscribe.Sink` fed by ADR-010's subscription with a high-water mark for
+idempotence, and `search.TermsOf` is the ONE place that decides what is indexed —
+so the write path and a rebuild cannot disagree about it.
 
-**Confirming candidates against the datoms** (§20). ⚠ This is the rule that
-decays quietest, because skipping it makes every search faster and the damage
-appears only on data that changed since the index saw it. An index fed by
-subscription is always behind.
+★ **And the constraint this section said was "worth nothing unproven" IS proven:**
+`TestRebuildFromTheLogMatchesIncremental` builds an index incrementally, rebuilds
+it by walking the log, and requires the same answers. That property is what makes
+losing the index a performance event rather than a data-loss event.
 
-**Ranking.** Cannot be chosen without a corpus to choose it against, and the
-choice must record which corpus and on what date. ⚠ It also interacts with
-ADR-021's central cost: every candidate costs a decrypt, so a ranker that needs
-to score thousands of them may be unaffordable at that price. Measure the decrypt
-cost first.
+⚠ Note what "reproduce it exactly" has to mean, because the obvious reading is
+wrong: a posting is SEALED under its subject's key, and sealing is nondeterministic
+by design — a deterministic seal would make two identical postings byte-identical
+and therefore linkable. So the rebuilt index cannot be compared byte-for-byte, and
+the property is that it ANSWERS the same.
 
-**The `SEARCH` grammar.** `SEARCH … IN … FACET BY … LIMIT …` with a time clause.
-⚠ It amends ADR-011, which listed ordering and limiting as deliberate omissions —
-they stand for `SELECT` and are lifted only here, where ranking exists. When it
-lands it must appear in `docs/QUERY-LANGUAGE.md`, and the documentation-coverage
-gate will fail until it does.
+**Confirming candidates against the datoms** (§20). ~~This is the rule that decays
+quietest.~~ **Built:** `search.Confirm` re-checks every candidate against the
+datoms at the snapshot, reducing through `ports.Carried` so a RETRACTED attribute
+cannot confirm a fact that was withdrawn. ⚠ That retraction bug was real and a
+mutant found it — the first version scanned raw visible datoms.
+
+**Ranking.** Still open, and still for the reason given: it cannot be chosen
+without a corpus to choose it against, and the choice must record which corpus and
+on what date. `search.Rank` scores by IDF today, which is a placeholder rather
+than a decision. ⚠ It also interacts with ADR-021's central cost: every candidate
+costs a decrypt, so a ranker that needs to score thousands of them may be
+unaffordable at that price. Measure the decrypt cost first.
+
+**The `SEARCH` grammar.** ~~When it lands it must appear in
+`docs/QUERY-LANGUAGE.md`.~~ **Landed**, and it is documented there — the
+documentation-coverage gate would fail otherwise, which is the gate working.
 
 **Analysis: stemming, stop words, language detection.** The analyzer is
 deliberately the simplest testable thing — lower-case and split. Anything more
@@ -859,7 +911,7 @@ thing turns up in an index.
 cheaply as a plaintext one. That is the price of erasure reaching the index, it
 is accepted deliberately, and it is entirely unquantified.
 
-### §28 — Writes reach memory and stop there
+### §28 — Writes reach a disk; routing and replication are open
 
 **Source:** ADR-022 (`docs/adr/ADR-022-write-statements.md`), Out of Scope; and
 both its task files.
@@ -890,7 +942,7 @@ govern and adds no rule of its own, so the engine has to agree with the RECORDS.
 The failure here is slow and looks like progress — somebody adds a convenience to
 the session, the engine copies it, and a rule nobody wrote down is what runs.
 
-### §29 — Links exist as a model and cannot be written or walked from the language
+### §29 — Links are written, walked and read inbound; the depth default is open
 
 **Source:** ADR-023 (`docs/adr/ADR-023-links-and-traversal.md`), Out of Scope; and
 `ADR-023-links-and-traversal/tasks/T2-links-in-the-language.md`.
