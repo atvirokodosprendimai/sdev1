@@ -48,6 +48,48 @@
 // between them is where the current state is simply KEPT. That band is the
 // mechanism, and a decision that consulted only one threshold would not have it.
 //
+// # Shed what a peer could serve instead
+//
+// A saturated node has to give something up, and the two read classes are not
+// alike (ADR-039). ★ The ordering principle is the one this package already uses
+// one level up, and it is ELASTICITY rather than importance:
+//
+//   - A USER read is elastic. Any replica holds the data, so shedding it
+//     re-routes the read to a peer — which is what this mechanism is for.
+//   - A REPAIR read is not. It reads the fragments THIS node holds, so shedding
+//     it moves the work nowhere: it CANCELS it, which is precisely what makes a
+//     shed write an outage rather than a re-route.
+//
+// ⚠ So a withdrawn node refuses user reads and keeps serving repair reads. Three
+// tiers — writes always, repair while withdrawn, user only while joined — out of
+// one budget, one utilisation and one state.
+//
+// ⚠ It is NOT a budget per class. There is still one read ceiling and one read
+// utilisation, and both classes move the same number; a per-class ceiling would
+// be the third budget kind this package refused, and it would let the two classes
+// stop competing for the resource they share.
+//
+// ★ A second reason points the same way: a degraded read costs k fragment
+// fetches, so the reads a repair makes unnecessary are also the expensive ones.
+// Shedding repair prolongs the degradation generating the load.
+//
+// ⚠ The starvation risk is real and is NOT bounded here. A node saturated by
+// repair work stays withdrawn and keeps refusing user reads; what bounds that is a
+// bound on repair traffic, which is docs/adr/BACKLOG.md §3 and is open.
+//
+// # A node decides alone
+//
+// ⚠ [Controller.Decide] consults this node's own utilisation and takes NO peer
+// state. That is the enforcement rather than an omission, and BACKLOG.md §22
+// names why: *a node that refuses to withdraw because its peers already have is a
+// node that keeps taking work it cannot serve* — the error-returning behaviour
+// this package rejected, arrived at by a different route.
+//
+// ★ "Should I withdraw" and "what do we do when everyone has" are two questions,
+// and conflating them is the only way to write that trap. The second belongs to
+// [Fleet], which holds STATES rather than controllers, so there is nothing to
+// reach back through.
+//
 // # What this package does not do
 //
 // It measures nothing — it is told its utilisation, and the counters that carry
