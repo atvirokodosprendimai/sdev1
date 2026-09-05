@@ -136,10 +136,10 @@ one through it.**
 
 | | |
 |---|---|
-| **Runs today** | 38 Go packages, 444 tests, race-clean — 36 packages carry tests. The two that do not are `cmd/sdev1-ql`, proved by its records' fences RUNNING the built binary, and `cmd/sdev1-serve`, whose fence only BUILDS it — the server's behaviour is proved in `internal/core/serve` against real loopback sockets, and the binary itself is proved to compile and nothing more. Three binaries: `sdev1-addr`, `sdev1-ql` and `sdev1-serve`. |
+| **Runs today** | 38 Go packages, 445 tests, race-clean — 36 packages carry tests, and the two that do not are the commands, each proved by RUNNING the built binary rather than by compiling it. ★ `cmd/sdev1-serve` is started **twice, as two real processes**, and a redirect is followed between them: a build would have proved only that `main` compiles, and the flag names, `--leaf` parsing and `--route` spelling could each have been wrong and still built clean. Three binaries: `sdev1-addr`, `sdev1-ql` and `sdev1-serve`. |
 | **Exists now** | A storage engine, an evaluator, and a transport: facts encoded into blocks, blocks into segments published by rename, segments into a leaf, a `READ` that reads one entity out of it and filters — and a socket that serves that read or redirects to the node that can. |
 | **Does not exist** | A networked write, a query planner, a similarity metric, authentication, a running cluster that places or replicates anything. |
-| **Honestly measured** | 319 mutants killed across the corpus, 23 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Seven found claims that nothing was holding: one was a real bug, and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
+| **Honestly measured** | 323 mutants killed across the corpus, 23 recorded as *survived*. ★ Those rows are kept rather than deleted even after the test that let one through is strengthened — a mutant that lived is the record of what the suite could not see. Seven found claims that nothing was holding: one was a real bug, and two showed claims **no test in this design can falsify**, which were withdrawn or marked unprovable rather than propped up. |
 
 What that buys: every rule below is *checkable now*, with no cluster, and the
 hard decisions — the ones that cannot be retrofitted once data exists — are
