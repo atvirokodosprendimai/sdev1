@@ -158,7 +158,7 @@ the operation out of scope for this engine.
 cost of leaving this open is bounded, and the cost of guessing wrong in the
 permissive direction is not.
 
-### §10 — Nothing decides what a cluster does with leaves below the durability floor
+### §10 — A below-floor leaf is reported and stays readable; re-replication is open
 
 **Source:** ADR-004 (`docs/adr/ADR-004-durability-policy.md`), Out of Scope.
 
@@ -166,13 +166,39 @@ ADR-004 refuses writes to a leaf holding fewer than `MinSize` durable copies.
 It does not decide what happens next, and "the write is refused" is only half an
 answer: the leaf is still readable, still degraded, and still degrading.
 
-What a decision here must answer: whether the cluster re-replicates
-automatically or waits for an operator, how a leaf below the floor is surfaced
-(an alarm, a status, a refusal message naming the shortfall), whether such a leaf
-is evicted from the read path, and how an operator distinguishes "briefly
-degraded during a restart" from "genuinely short of copies", since the two look
-identical for the first few seconds and demand opposite responses.
+~~What a decision here must answer: whether the cluster re-replicates
+automatically or waits for an operator, how a leaf below the floor is surfaced,
+whether such a leaf is evicted from the read path, and how an operator
+distinguishes "briefly degraded during a restart" from "genuinely short of
+copies".~~ **Three of the four are answered by ADR-040**
+(`docs/adr/ADR-040-below-the-floor.md`).
 
+**How it is surfaced.** `durability.Watchdog` reports every short leaf with its
+age, oldest first, and raises an ADR-038 obligation once it has been short longer
+than a declared grace.
+
+**Whether it is evicted from the read path.** No. ⚠ A below-floor leaf is
+degraded, not wrong: its data is readable and correct, so eviction trades a
+durability risk for a certain outage — and removes exactly the copies that still
+exist. Same argument ADR-015 uses for a shed write.
+
+★ **How an operator tells a restart from a shortfall — and this section's own
+wording contained the answer.** It said the two *"look identical for the first few
+seconds"*. They do not merely look identical: **instantaneously they ARE the same
+observation.** A leaf holding two of three racks is holding two of three, whatever
+the reason. No richer measurement separates them, because the difference is
+entirely in what happens NEXT — so the discriminator can only be TIME, and it is
+declared rather than guessed.
+
+⚠ And the grace withholds the OBLIGATION, never the STATUS. Suppressing both is
+the obvious single rule and it makes a genuine shortfall invisible for the grace;
+an operator watching a rolling restart wants to see the dip and its recovery, they
+simply do not want to be answerable for it.
+
+⚠ **Still open: whether the cluster re-replicates automatically or waits for an
+operator.** It needs consensus to decide who acts (§19), and a wrong choice is
+exercised only during the failure that makes it matter. The report is what makes
+that choice measurable rather than argued.
 ### §11 — Reuse and authorization are decided; allocation is open
 
 **Source:** ADR-016 (`docs/adr/ADR-016-tenant-prefix.md`), Out of Scope and its
