@@ -191,32 +191,52 @@ revoking access today would otherwise leave the revoked party able to read last
 year. Grants are naturally datoms in a reserved system tenant, which makes "who
 had access at time T" answerable and makes revocation a retraction.
 
-### §12 — Nothing writes a segment to a disk, or finds a block inside one
+### §12 — Segments reach a disk; the block index, the layout and interning are open
 
 **Source:** ADR-005 (`docs/adr/ADR-005-segment-format.md`), Out of Scope; and
 both its task files, whose Out of Scope defers anything that opens a file here.
 
+⚠ **THE HEADING WAS STALE AND IS CORRECTED.** It read *"Nothing writes a segment
+to a disk, or finds a block inside one"*, which stopped being true when ADR-024
+and ADR-026 landed — and was still being read as a statement of fact, including
+by records deferring work to it. ★ A backlog entry describing a gap that is
+already closed is the same defect as a declared reader that never runs: it is
+believed, and it is wrong.
+
 `internal/core/segment` decides what a block IS and refuses to touch a
 filesystem. That was deliberate — the format has to be right before any byte
 reaches a disk, and keeping the package to byte slices is what makes every
-property testable with no storage engine. It leaves three things undecided.
+property testable with no storage engine.
 
-**The writer.** Blocks must be packed into a segment, the segment made durable,
-and the moment it becomes readable defined. A segment is immutable once sealed,
-so "sealed" is a state transition somebody has to own, and ADR-004 already
-attaches a different durability policy to each side of it.
+**The writer.** ~~Blocks must be packed into a segment, the segment made durable,
+and the moment it becomes readable defined.~~ **Answered by ADR-024**
+(`docs/adr/ADR-024-segment-store.md`): `segstore.Writer` packs blocks and `Seal`
+publishes by atomic rename from a temporary name in the SAME directory, so a
+segment is either absent or complete and never partially visible.
+`segstore.Reader` mmaps a sealed one. "Sealed" is the state transition and it is
+owned there. ADR-026 (`docs/adr/ADR-026-leaf-store.md`) assembles segments into a
+leaf, and ADR-029/ADR-030 seal and compact it.
 
-**The block index.** A segment header records how many blocks it holds and each
-block header is fixed-width, so a reader can stride — but striding a segment to
-find one subject is a linear scan. What maps a subject to a block offset, where
-that map lives, and whether it is in the segment or beside it, are open. This is
-the question the layered-index discussion was circling and it should be answered
-with it rather than separately.
+★ **And the trap this section named is answered by construction.** It warned that
+*"whatever names a segment file must not encode anything a reader needs in order
+to interpret it"*. `segstore` names a segment with sixteen random hex bytes: the
+name carries no codec, no tenant, no version and no ordering, so there is nothing
+in a path for a reader to depend on. It means nothing on purpose.
+
+**The block index.** ⚠ **Partly answered, and the open half is the one that
+matters.** A segment carries its own index — key to span — so finding a block
+inside ONE segment is a lookup rather than a stride, and the index is checksummed
+in the trailer. What is still open is the layer above: what maps a subject to the
+SEGMENT holding it, across a leaf and then across leaves. Today a leaf consults
+its segments in turn. That is the question the layered-index discussion was
+circling, it belongs with §27's index work, and it should be answered with it
+rather than separately.
 
 **The on-disk layout.** Roughly four megabytes per block and a nested directory
-path were both discussed as the shape. Neither is decided, and the reclaim
-argument — many small units droppable whole rather than one file to rewrite —
-constrains it more than the numbers do.
+path were both discussed as the shape. Neither is decided — `segstore` writes flat
+files into a directory it is given — and the reclaim argument, many small units
+droppable whole rather than one file to rewrite, constrains it more than the
+numbers do.
 
 **Interning is the fourth, and it is the largest saving available.** Every datom
 carries an entity and an attribute, and a segment repeats the same handful of
@@ -357,7 +377,7 @@ Whatever closes this should extend the catalogue rather than sit beside it — a
 disposition says whether the data came back, and a cost column would say what it
 took, which is the pair an operator actually needs.
 
-### §17 — The keystore has no home, no rotation and no caching story
+### §17 — The keystore has a home now; rotation and caching are still open
 
 **Source:** ADR-007 (`docs/adr/ADR-007-crypto-shredding.md`), Out of Scope and
 its Follow-ups; and both its task files.
@@ -366,12 +386,25 @@ ADR-007 makes erasure the destruction of a per-subject key and puts that key in 
 mutable keystore, deliberately separate from the immutable ciphertext. It does
 not say where the keystore actually lives, and three questions follow.
 
-**Persistence.** The shipped implementation is `MemoryKeystore`, and its name is
-the warning: every key is lost on restart, which erases everything. That is safe
-in the wrong direction and unusable in production. Whatever replaces it inherits
-an unusual requirement — it must be genuinely DELETABLE, since a store that only
-tombstones has not destroyed anything, and a log-structured store that keeps old
-versions would quietly defeat the whole record.
+**Persistence.** ~~The shipped implementation is `MemoryKeystore`, and its name is
+the warning: every key is lost on restart, which erases everything.~~
+**Answered by ADR-031** (`docs/adr/ADR-031-keystore-home.md`):
+`crypt.DirKeystore` keeps each key in its own file under a directory that is
+separately deletable, and `OpenDirKeystore` probes at open time that the directory
+can be both WRITTEN to and REMOVED from — because a store that can only create is
+one where erasure fails at the moment it matters.
+
+⚠ The unusual requirement it inherited is honoured: a key file is UNLINKED rather
+than tombstoned, and the cache entry is evicted inside the shred rather than
+after it, so a destroyed key cannot be served from memory. `MemoryKeystore`
+remains for tests, where losing keys on exit is the correct behaviour.
+
+⚠ **Still open, and unchanged: the keystore must not share a backup with the
+data.** Restoring one that holds both resurrects the key beside the ciphertext,
+silently undoing every erasure it contains. This is the single easiest way to get
+crypto-shredding wrong, it is a retention decision rather than a code one, and
+giving the keystore a directory of its own makes it easier to get right without
+making it automatic.
 
 ⚠ **The keystore must not share a backup with the data.** Restoring one that
 holds both resurrects the key beside the ciphertext, silently undoing every
@@ -834,9 +867,14 @@ both its task files.
 `ASSERT` and `RETRACT` parse and run, and `cmd/sdev1-ql` shows the whole loop
 working. Everything after that is open.
 
-**Durability** (§12). The session holds datoms in a map and loses them on exit.
-This is the same storage-engine blocker as everywhere else, arriving from a new
-direction.
+**Durability** (§12). ~~The session holds datoms in a map and loses them on exit.~~
+**Answered by ADR-026 and ADR-027**: a session opened with a `*leafstore.Store`
+records every datom through it, rehydrates on open, and `cmd/sdev1-ql --dir`
+writes to a leaf on a disk that outlives the process. A session opened WITHOUT one
+still holds datoms in memory, which is what the tests use.
+
+⚠ **Still open:** everything past one leaf. Nothing routes a write to the leaf
+that should hold it, and nothing replicates one — §18 and §19.
 
 **Several attributes in one statement.** `ASSERT planet-7 mass = 1, radius = 2`
 does not parse. It stays inside ADR-003's one-entity boundary and is purely a
